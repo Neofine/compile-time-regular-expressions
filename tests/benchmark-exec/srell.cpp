@@ -2,9 +2,10 @@
 
 int main (int argc, char ** argv)
 {
-	auto re = srell::regex(PATTERN);
+	srell::regex r(PATTERN);
 	
-	benchmark(argc, argv, [&] (std::string_view line) { 
-		return srell::regex_search(line.begin(), line.end(), re);
+	return benchmark(argc, argv, [&r](std::string_view line) -> bool {
+		const std::string str(line);
+		return srell::regex_search(str, r);
 	});
 }

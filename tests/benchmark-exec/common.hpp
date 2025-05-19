@@ -8,7 +8,7 @@
 #include <boost/xpressive/xpressive.hpp>
 #include <chrono>
 #include "pattern.hpp"
-#include <srell.hpp>
+#include "srell_include/srell.hpp"
 
 extern "C" {
 

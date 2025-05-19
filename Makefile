@@ -1,4 +1,4 @@
-.PHONY: default all clean grammar compare single-header single-header/ctre.hpp single-header/ctre-unicode.hpp single-header/unicode-db.hpp
+.PHONY: default all clean grammar compare single-header single-header/ctre.hpp single-header/ctre-unicode.hpp single-header/unicode-db.hpp benchmark-exec benchmark-compare
 
 default: all
 	
@@ -37,11 +37,83 @@ $(OBJECTS): %.o: %.cpp
 -include $(DEPEDENCY_FILES)
 
 benchmark:
+	@echo ""
+	@echo "Available benchmark targets:"
+	@echo "  make benchmark-simple    - Run simplified benchmark without external dependencies"
+	@echo "  make benchmark-external  - Run full benchmarks with external libraries (RE2, Boost, PCRE2, etc.)"
+	@echo "  make benchmark-compare   - Run comparative benchmarks and show results in CSV format"
+	@echo ""
+	@echo "Running simplified benchmark by default..."
+	@echo ""
+	@$(CXX) $(CXXFLAGS) -o simple_benchmark simple_benchmark.cpp
+	@./simple_benchmark && rm simple_benchmark
+
+benchmark-simple:
 	@$(MAKE) clean
-	@$(MAKE) IGNORE=""
+	@echo ""
+	@echo "Running simplified benchmark without external dependencies..."
+	@echo ""
+	@$(CXX) $(CXXFLAGS) -o simple_benchmark simple_benchmark.cpp
+	@./simple_benchmark && rm simple_benchmark
+
+benchmark-external:
+	@$(MAKE) clean
+	@echo ""
+	@echo "Running full benchmarks with external dependencies..."
+	@echo ""
+	@cd tests/benchmark-exec && CXXFLAGS="-std=c++$(CXX_STANDARD) -O3 -I../../include -I/opt/homebrew/opt/re2/include -I/opt/homebrew/Cellar/abseil/20240722.1/include -I/opt/homebrew/opt/boost/include -I/opt/homebrew/opt/pcre2/include -Wall -Wextra -Wno-error -Wno-sign-conversion -Wno-conversion" $(MAKE)
+	@echo ""
+	@echo "Running baseline benchmark..."
+	@cd tests/benchmark-exec && ./baseline input.txt
+	@echo ""
+	@echo "Running CTRE benchmark..."
+	@cd tests/benchmark-exec && ./ctre input.txt
+	@echo ""
+	@echo "Running RE2 benchmark..."
+	@cd tests/benchmark-exec && ./re2 input.txt
+	@echo ""
+	@echo "Running Boost benchmark..."
+	@cd tests/benchmark-exec && ./boost input.txt
+	@echo ""
+	@echo "Running PCRE2 benchmark..."
+	@cd tests/benchmark-exec && ./pcre input.txt
+	@echo ""
+	@echo "Running std::regex benchmark..."
+	@cd tests/benchmark-exec && ./std input.txt
+	@echo ""
+	@echo "Running Boost Xpressive benchmark..."
+	@cd tests/benchmark-exec && ./xpressive input.txt
+	@echo ""
+	@echo "Running SRELL benchmark..."
+	@cd tests/benchmark-exec && ./srell input.txt
+
+benchmark-compare:
+	@$(MAKE) clean
+	@echo ""
+	@echo "Running comparative benchmarks in benchmark mode..."
+	@echo ""
+	@cd tests/benchmark-exec && CXXFLAGS="-std=c++$(CXX_STANDARD) -O3 -I../../include -I/opt/homebrew/opt/re2/include -I/opt/homebrew/Cellar/abseil/20240722.1/include -I/opt/homebrew/opt/boost/include -I/opt/homebrew/opt/pcre2/include -Wall -Wextra -Wno-error -Wno-sign-conversion -Wno-conversion" $(MAKE)
+	@echo "library;pattern;duration" > tests/benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./baseline input.txt benchmark "Baseline" 2>/dev/null >>../benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./ctre input.txt benchmark "CTRE" 2>/dev/null >>../benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./re2 input.txt benchmark "RE2" 2>/dev/null >>../benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./boost input.txt benchmark "Boost::Regex" 2>/dev/null >>../benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./pcre input.txt benchmark "PCRE2" 2>/dev/null >>../benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./std input.txt benchmark "std::regex" 2>/dev/null >>../benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./xpressive input.txt benchmark "Boost::Xpressive" 2>/dev/null >>../benchmark-exec/result.csv
+	@cd tests/benchmark-exec && ./srell input.txt benchmark "SRELL" 2>/dev/null >>../benchmark-exec/result.csv
+	@echo ""
+	@echo "Benchmark Results (Library;Pattern;Duration in ms):"
+	@echo "------------------------------------------------"
+	@cat tests/benchmark-exec/result.csv
 	
 benchmark-clean:
 	@$(MAKE) IGNORE="" clean
+	@cd tests/benchmark-exec && $(MAKE) clean
+	@rm -f tests/benchmark-exec/result.csv tests/benchmark-exec/header.csv
+
+benchmark-exec:
+	@cd tests/benchmark-exec && CXXFLAGS="-std=c++$(CXX_STANDARD) -O3 -I../../include -I/opt/homebrew/opt/re2/include -I/opt/homebrew/Cellar/abseil/20240722.1/include -I/opt/homebrew/opt/boost/include -Wall -Wextra -Wno-error -Wno-sign-conversion -Wno-conversion" $(MAKE)
 
 clean:
 	rm -f $(TRUE_TARGETS) $(OBJECTS) $(DEPEDENCY_FILES) mtent12.txt mtent12.zip
