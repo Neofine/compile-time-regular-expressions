@@ -140,3 +140,40 @@ simd_static_test: tests/simd_static_assertions
 tests/simd_static_assertions: tests/simd_static_assertions.cpp
 	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_static_assertions.cpp -o tests/simd_static_assertions.o
 	$(CXX) tests/simd_static_assertions.o -o tests/simd_static_assertions
+
+simd_repetition_test: tests/simd_repetition_test
+	./tests/simd_repetition_test
+
+tests/simd_repetition_test: tests/simd_repetition_test.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_repetition_test.cpp -o tests/simd_repetition_test.o
+	$(CXX) tests/simd_repetition_test.o -o tests/simd_repetition_test
+
+simd_repetition_benchmark: tests/simd_repetition_benchmark
+	./tests/simd_repetition_benchmark
+
+tests/simd_repetition_benchmark: tests/simd_repetition_benchmark.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_repetition_benchmark.cpp -o tests/simd_repetition_benchmark.o
+	$(CXX) tests/simd_repetition_benchmark.o -o tests/simd_repetition_benchmark
+
+simd_repetition_benchmark_disabled: tests/simd_repetition_benchmark_disabled
+	./tests/simd_repetition_benchmark_disabled
+
+tests/simd_repetition_benchmark_disabled: tests/simd_repetition_benchmark.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -DCTRE_DISABLE_SIMD -c tests/simd_repetition_benchmark.cpp -o tests/simd_repetition_benchmark_disabled.o
+	$(CXX) tests/simd_repetition_benchmark_disabled.o -o tests/simd_repetition_benchmark_disabled
+
+
+
+simd_character_class_benchmark: tests/simd_character_class_benchmark
+	./tests/simd_character_class_benchmark
+
+tests/simd_character_class_benchmark: tests/simd_character_class_benchmark.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_character_class_benchmark.cpp -o tests/simd_character_class_benchmark.o
+	$(CXX) tests/simd_character_class_benchmark.o -o tests/simd_character_class_benchmark
+
+simd_character_class_benchmark_disabled: tests/simd_character_class_benchmark_disabled
+	./tests/simd_character_class_benchmark_disabled
+
+tests/simd_character_class_benchmark_disabled: tests/simd_character_class_benchmark.cpp
+	$(CXX) -std=c++20 -Iinclude -Isrell_include -O1 -pedantic -Wall -Wextra -Werror -Wconversion -MMD -march=native -DCTRE_DISABLE_SIMD -c tests/simd_character_class_benchmark.cpp -o tests/simd_character_class_benchmark_disabled.o
+	$(CXX) tests/simd_character_class_benchmark_disabled.o -o tests/simd_character_class_benchmark_disabled

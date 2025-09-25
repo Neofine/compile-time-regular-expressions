@@ -1,0 +1,42 @@
+CompileFlags:
+  Add: 
+    - -std=c++20
+    - -I/root/compile-time-regular-expressions/include
+    - -I/usr/include/c++/14
+    - -I/usr/include/x86_64-linux-gnu/c++/14
+    - -I/usr/include/c++/14/backward
+    - -I/usr/lib/gcc/x86_64-linux-gnu/14/include
+    - -I/usr/local/include
+    - -I/usr/include/x86_64-linux-gnu
+    - -I/usr/include
+  Remove: 
+    - -W*
+    - -f*
+
+Index:
+  Background: Build
+  StandardLibrary: Yes
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+
+Hover:
+  ShowAKA: Yes
+
+Diagnostics:
+  ClangTidy:
+    Add: 
+      - readability-*
+      - performance-*
+      - modernize-*
+    Remove:
+      - readability-magic-numbers
+      - readability-uppercase-literal-suffix
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+
+Completion:
+  AllScopes: Yes
+

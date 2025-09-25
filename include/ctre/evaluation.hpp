@@ -12,6 +12,7 @@
 #include "simd_detection.hpp"
 #include "simd_string_matching.hpp"
 #include "simd_repetition.hpp"
+#include "simd_character_classes.hpp"
 #include <cstdio>
 #ifndef CTRE_IN_A_MODULE
 #include <iterator>
@@ -406,15 +407,52 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 		return not_matched;
 	}
 
-	// SIMD optimization for character repetition at runtime (invisible to user)
-	// TODO: Implement SIMD repetition optimization
+	// SIMD optimization for character class repetition at runtime (invisible to user)
+	// Check this first to handle set<char_range<A, B>> patterns like [a-z]*
+	if constexpr (sizeof...(Content) == 1) {
+		// Check if this is a character class pattern (set<char_range<A, B>>)
+		if constexpr (requires { typename simd::is_char_range_set_trait<Content...>::type; }) {
+			// Try SIMD optimization for character class repetition
+			if (!std::is_constant_evaluated() && simd::can_use_simd()) {
+				// DEBUG: Print when SIMD path is taken
+				// printf("SIMD character class path taken\n");
+				// Use SIMD-optimized character class repetition
+				Iterator simd_result = simd::match_pattern_repeat_simd<Content..., A, B>(current, last, f);
+				if (simd_result != current) {
+					// SIMD found a match, continue with the rest of the pattern
+					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+				}
+			} else {
+				// DEBUG: Print when SIMD is disabled
+				// printf("SIMD disabled, using original CTRE implementation\n");
+			}
+		}
+	}
+	
+	// SIMD optimization for single character repetition at runtime (invisible to user)
+	// This handles single character patterns like a*
+	if constexpr (sizeof...(Content) == 1) {
+		// Check if this is a single character pattern (not a character class)
+		if constexpr (!requires { typename simd::is_char_range_set_trait<Content...>::type; }) {
+			// Try SIMD optimization for single character repetition
+			if (!std::is_constant_evaluated() && simd::can_use_simd()) {
+				// Use SIMD-optimized character repetition
+				Iterator simd_result = simd::match_character_repeat_simd<Content..., A, B>(current, last, f);
+				if (simd_result != current) {
+					// SIMD found a match, continue with the rest of the pattern
+					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+				}
+			}
+		}
+	}
 
 #ifndef CTRE_DISABLE_GREEDY_OPT
-	else if constexpr (!collides(calculate_first(Content{}...), calculate_first(Tail{}...))) {
+	if constexpr (!collides(calculate_first(Content{}...), calculate_first(Tail{}...))) {
 		return evaluate(begin, current, last, f, captures, ctll::list<possessive_repeat<A,B,Content...>, Tail...>());
 	}
+	else
 #endif
-	else {
+	{
 		// A..B
 		size_t i{0};
 		while (less_than<A>(i)) {
