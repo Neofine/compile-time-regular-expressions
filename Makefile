@@ -13,7 +13,7 @@ PYTHON := python3.9
 
 PEDANTIC:=-pedantic
 
-override CXXFLAGS := $(CXXFLAGS) -std=c++$(CXX_STANDARD) -Iinclude -O3 $(PEDANTIC) -Wall -Wextra -Werror -Wconversion
+override CXXFLAGS := $(CXXFLAGS) -std=c++$(CXX_STANDARD) -Iinclude -Isrell_include -O3 $(PEDANTIC) -Wall -Wextra -Werror -Wconversion
 LDFLAGS := 
 
 TESTS := $(wildcard tests/*.cpp) $(wildcard tests/benchmark/*.cpp)
@@ -90,3 +90,53 @@ compare: mtent12.txt
 	$(CXX) $(CXXFLAGS) -MMD -march=native -DPATTERN="\"(${PATTERN})\"" -c tests/benchmark-range/measurement.cpp -o tests/benchmark-range/measurement.o
 	$(CXX) tests/benchmark-range/measurement.o -lboost_regex -lpcre2-8 -lre2 -o tests/benchmark-range/measurement
 	tests/benchmark-range/measurement all mtent12.txt ${REPEAT}
+
+# Essential SIMD Tests - Clean and Focused
+simd_comprehensive_test: tests/comprehensive_simd_test
+	./tests/comprehensive_simd_test
+
+tests/comprehensive_simd_test: tests/comprehensive_simd_test.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/comprehensive_simd_test.cpp -o tests/comprehensive_simd_test.o
+	$(CXX) tests/comprehensive_simd_test.o -o tests/comprehensive_simd_test
+
+simd_comprehensive_test_disabled: tests/comprehensive_simd_test_disabled
+	./tests/comprehensive_simd_test_disabled
+
+tests/comprehensive_simd_test_disabled: tests/comprehensive_simd_test.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -DCTRE_DISABLE_SIMD -c tests/comprehensive_simd_test.cpp -o tests/comprehensive_simd_test_disabled.o
+	$(CXX) tests/comprehensive_simd_test_disabled.o -o tests/comprehensive_simd_test_disabled
+
+simd_ab_test: tests/simd_ab_test_final
+	./tests/simd_ab_test_final
+
+tests/simd_ab_test_final: tests/simd_ab_test_final.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_ab_test_final.cpp -o tests/simd_ab_test_final.o
+	$(CXX) tests/simd_ab_test_final.o -o tests/simd_ab_test_final
+
+simd_ab_test_disabled: tests/simd_ab_test_final_disabled
+	./tests/simd_ab_test_final_disabled
+
+tests/simd_ab_test_final_disabled: tests/simd_ab_test_final.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -DCTRE_DISABLE_SIMD -c tests/simd_ab_test_final.cpp -o tests/simd_ab_test_final_disabled.o
+	$(CXX) tests/simd_ab_test_final_disabled.o -o tests/simd_ab_test_final_disabled
+
+simd_constexpr_test: tests/constexpr_simd_test
+	./tests/constexpr_simd_test
+
+tests/constexpr_simd_test: tests/constexpr_simd_test.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/constexpr_simd_test.cpp -o tests/constexpr_simd_test.o
+	$(CXX) tests/constexpr_simd_test.o -o tests/constexpr_simd_test
+
+simd_flag_test: tests/simd_flag_test
+	./tests/simd_flag_test
+
+tests/simd_flag_test: tests/simd_flag_test.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_flag_test.cpp -o tests/simd_flag_test.o
+	$(CXX) tests/simd_flag_test.o -o tests/simd_flag_test
+
+simd_static_test: tests/simd_static_assertions
+	./tests/simd_static_assertions
+
+tests/simd_static_assertions: tests/simd_static_assertions.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_static_assertions.cpp -o tests/simd_static_assertions.o
+	$(CXX) tests/simd_static_assertions.o -o tests/simd_static_assertions

@@ -9,6 +9,10 @@
 #include "return_type.hpp"
 #include "find_captures.hpp"
 #include "first.hpp"
+#include "simd_detection.hpp"
+#include "simd_string_matching.hpp"
+#include "simd_repetition.hpp"
+#include <cstdio>
 #ifndef CTRE_IN_A_MODULE
 #include <iterator>
 #endif
@@ -106,6 +110,17 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
 // matching strings in patterns
 template <auto... String, typename Iterator, typename EndIterator> constexpr CTRE_FORCE_INLINE bool match_string([[maybe_unused]] Iterator & current, [[maybe_unused]] const EndIterator last, [[maybe_unused]] const flags & f) {
+	[[maybe_unused]] constexpr size_t string_length = sizeof...(String);
+	
+	// SIMD optimization for long strings at runtime (invisible to user)
+	if constexpr (string_length >= simd::SIMD_STRING_THRESHOLD) {
+		if (!std::is_constant_evaluated() && simd::can_use_simd()) {
+			// Use SIMD-optimized string matching
+			return simd::match_string_simd<String...>(current, last, f);
+		}
+	}
+	
+	// Original implementation for compile-time or short strings
 	return ((current != last && character<String>::match_char(*current++, f)) && ... && true);
 }
 
@@ -380,6 +395,9 @@ constexpr inline R evaluate_recursive(size_t i, const BeginIterator begin, Itera
 
 
 
+// SIMD-optimized single character repetition would be implemented here
+// For now, we use the original implementation to avoid constexpr issues
+
 // (greedy) repeat 
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, size_t A, size_t B, typename... Content, typename... Tail> 
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator current, const EndIterator last, [[maybe_unused]] const flags & f, R captures, [[maybe_unused]] ctll::list<repeat<A,B,Content...>, Tail...> stack) {
@@ -387,6 +405,9 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 	if constexpr ((B != 0) && (A > B)) {
 		return not_matched;
 	}
+
+	// SIMD optimization for character repetition at runtime (invisible to user)
+	// TODO: Implement SIMD repetition optimization
 
 #ifndef CTRE_DISABLE_GREEDY_OPT
 	else if constexpr (!collides(calculate_first(Content{}...), calculate_first(Tail{}...))) {

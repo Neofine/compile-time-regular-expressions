@@ -51,7 +51,7 @@ $(LIBRARIES:%=%.o): %.o: %.cpp common.hpp $(PATTERN_HASH).tmp pattern.hpp
 	$(CXX) -O3 $(CXXFLAGS) ${${@:%.o=%}_CXXFLAGS} -c $< -o $@
 
 $(LIBRARIES): %: %.o common.hpp $(PATTERN_HASH).tmp pattern.hpp
-	$(CXX) -O3 $(LDFLAGS) ${${@}_LDFLAGS} $< -o $@
+	$(CXX) -O3 $< $(LDFLAGS) ${${@}_LDFLAGS} -o $@
 
 header.csv:
 	echo "library;pattern;duration" > header.csv
