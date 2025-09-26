@@ -1,132 +1,94 @@
 #!/bin/bash
 
-# CTRE SIMD Comprehensive Benchmark Runner
-# Compares SIMD vs Non-SIMD performance across all functionality
+# Comprehensive SIMD vs Non-SIMD Benchmark Script
+# Produces a minimalistic table comparing performance across different test cases
 
-set -e  # Exit on any error
+set -e
 
-echo "🚀 CTRE SIMD Comprehensive Benchmark"
-echo "===================================="
+echo "Building comprehensive benchmark..."
+
+# Build SIMD version
+g++ -std=c++20 -O3 -march=native -Iinclude tests/comprehensive_benchmark.cpp -o tests/comprehensive_benchmark_simd -lstdc++
+
+# Build non-SIMD version
+g++ -std=c++20 -O3 -march=native -Iinclude -DCTRE_DISABLE_SIMD tests/comprehensive_benchmark.cpp -o tests/comprehensive_benchmark_nosimd -lstdc++
+
+echo "Running benchmarks..."
+
+# Run SIMD version and capture results
+echo "Running SIMD benchmark..."
+./tests/comprehensive_benchmark_simd > simd_results.csv
+
+# Run non-SIMD version and capture results
+echo "Running non-SIMD benchmark..."
+./tests/comprehensive_benchmark_nosimd > nosimd_results.csv
+
+# Process results and create comparison table
 echo ""
+echo "=========================================="
+echo "SIMD vs Non-SIMD Performance Comparison"
+echo "=========================================="
+printf "%-20s %-12s %-12s %-8s\n" "Test Type" "SIMD (ns)" "Non-SIMD (ns)" "Speedup"
+echo "------------------------------------------"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# Create associative arrays to store results
+declare -A simd_times
+declare -A nosimd_times
 
-# Function to print colored output
-print_header() {
-    echo -e "${BLUE}$1${NC}"
-}
+# Read SIMD results
+while IFS=',' read -r test_name simd_time; do
+    if [[ -n "$test_name" && -n "$simd_time" && "$simd_time" != "inf" && "$simd_time" != "0" ]]; then
+        simd_times["$test_name"]="$simd_time"
+    fi
+done < simd_results.csv
 
-print_success() {
-    echo -e "${GREEN}$1${NC}"
-}
+# Read non-SIMD results
+while IFS=',' read -r test_name nosimd_time; do
+    if [[ -n "$test_name" && -n "$nosimd_time" && "$nosimd_time" != "inf" && "$nosimd_time" != "0" ]]; then
+        nosimd_times["$test_name"]="$nosimd_time"
+    fi
+done < nosimd_results.csv
 
-print_warning() {
-    echo -e "${YELLOW}$1${NC}"
-}
+# Print comparison table
+for test_name in "${!simd_times[@]}"; do
+    if [[ -n "${nosimd_times[$test_name]}" ]]; then
+        simd_time="${simd_times[$test_name]}"
+        nosimd_time="${nosimd_times[$test_name]}"
+        speedup=$(echo "scale=2; $nosimd_time / $simd_time" | bc -l)
+        printf "%-20s %-12.2f %-12.2f %-8.2fx\n" "$test_name" "$simd_time" "$nosimd_time" "$speedup"
+    fi
+done
 
-print_error() {
-    echo -e "${RED}$1${NC}"
-}
+echo "------------------------------------------"
 
-# Clean previous builds
-print_header "🧹 Cleaning previous builds..."
-make clean > /dev/null 2>&1 || true
+# Calculate overall statistics
+echo ""
+echo "Overall Statistics:"
+total_simd=0
+total_nosimd=0
+count=0
 
-# Compile SIMD version
-print_header "🔧 Compiling SIMD version..."
-g++ -std=c++20 -Iinclude -Isrell_include -O3 -pedantic -Wall -Wextra -Werror -Wconversion -MMD -march=native \
-    -c tests/comprehensive_simd_benchmark.cpp -o tests/comprehensive_simd_benchmark.o
-g++ tests/comprehensive_simd_benchmark.o -o tests/comprehensive_simd_benchmark
+for test_name in "${!simd_times[@]}"; do
+    if [[ -n "${nosimd_times[$test_name]}" ]]; then
+        total_simd=$(echo "$total_simd + ${simd_times[$test_name]}" | bc -l)
+        total_nosimd=$(echo "$total_nosimd + ${nosimd_times[$test_name]}" | bc -l)
+        count=$((count + 1))
+    fi
+done
 
-if [ $? -eq 0 ]; then
-    print_success "✅ SIMD version compiled successfully"
+if [[ $count -gt 0 ]]; then
+    overall_speedup=$(echo "scale=2; $total_nosimd / $total_simd" | bc -l)
+    echo "Total SIMD time: ${total_simd} ns"
+    echo "Total Non-SIMD time: ${total_nosimd} ns"
+    echo "Overall speedup: ${overall_speedup}x"
+    echo "Number of tests: $count"
 else
-    print_error "❌ Failed to compile SIMD version"
-    exit 1
+    echo "Unable to calculate overall statistics (no matching tests found)"
 fi
-
-# Compile Non-SIMD version
-print_header "🔧 Compiling Non-SIMD version..."
-g++ -std=c++20 -Iinclude -Isrell_include -O3 -pedantic -Wall -Wextra -Werror -Wconversion -MMD -march=native \
-    -DCTRE_DISABLE_SIMD \
-    -c tests/comprehensive_simd_benchmark.cpp -o tests/comprehensive_simd_benchmark_no_simd.o
-g++ tests/comprehensive_simd_benchmark_no_simd.o -o tests/comprehensive_simd_benchmark_no_simd
-
-if [ $? -eq 0 ]; then
-    print_success "✅ Non-SIMD version compiled successfully"
-else
-    print_error "❌ Failed to compile Non-SIMD version"
-    exit 1
-fi
-
-# Run benchmarks
-print_header "🏃 Running SIMD benchmark..."
-echo ""
-echo -e "${CYAN}=== SIMD ENABLED ===${NC}"
-timeout 30s ./tests/comprehensive_simd_benchmark || {
-    print_warning "⚠️  SIMD benchmark timed out or failed"
-}
-
-echo ""
-print_header "🏃 Running Non-SIMD benchmark..."
-echo ""
-echo -e "${CYAN}=== SIMD DISABLED ===${NC}"
-timeout 30s ./tests/comprehensive_simd_benchmark_no_simd || {
-    print_warning "⚠️  Non-SIMD benchmark timed out or failed"
-}
-
-# Run individual pattern benchmarks for comparison
-print_header "🔍 Running individual pattern benchmarks..."
-
-echo ""
-echo -e "${CYAN}=== Single Character Patterns (SIMD) ===${NC}"
-timeout 10s ./tests/simd_repetition_benchmark 2>/dev/null | head -20 || {
-    print_warning "⚠️  Single character benchmark failed"
-}
-
-echo ""
-echo -e "${CYAN}=== Character Class Patterns (SIMD) ===${NC}"
-timeout 10s ./tests/simd_character_class_benchmark 2>/dev/null | head -20 || {
-    print_warning "⚠️  Character class benchmark failed"
-}
-
-# Performance summary
-print_header "📊 Performance Summary"
-echo ""
-echo -e "${GREEN}✅ SIMD optimizations are working for:${NC}"
-echo "   • Single character repetition (a*, a+, a{n,m})"
-echo "   • Character class repetition ([0-9]*, [a-z]*, etc.)"
-echo "   • Small range optimization (≤10 chars use direct comparison)"
-echo "   • Large range optimization (>10 chars use range comparison)"
-echo "   • Case-insensitive matching"
-echo "   • Remaining character processing"
-echo ""
-echo -e "${YELLOW}📈 Expected performance improvements:${NC}"
-echo "   • Character classes: ~1.4-1.5 ns (very fast)"
-echo "   • Single characters: ~4-7 ns (good)"
-echo "   • Small ranges [0-9]: ~0.7-5.8 ns (optimized)"
-echo "   • Large ranges [a-z]: ~1.4 ns (range comparison)"
-echo ""
 
 # Cleanup
-print_header "🧹 Cleaning up..."
-rm -f tests/comprehensive_simd_benchmark.o
-rm -f tests/comprehensive_simd_benchmark_no_simd.o
-rm -f tests/comprehensive_simd_benchmark
-rm -f tests/comprehensive_simd_benchmark_no_simd
+rm -f simd_results.csv nosimd_results.csv
+rm -f tests/comprehensive_benchmark_simd tests/comprehensive_benchmark_nosimd
 
-print_success "🎉 Benchmark complete!"
 echo ""
-echo -e "${PURPLE}💡 Tips:${NC}"
-echo "   • Run with 'time' to see total execution time"
-echo "   • Use 'perf' for detailed CPU analysis"
-echo "   • Check CPU frequency scaling: 'cpupower frequency-info'"
-echo "   • For consistent results, disable CPU frequency scaling"
-echo ""
+echo "Benchmark completed successfully!"
