@@ -8,13 +8,14 @@ IGNORE := $(wildcard tests/benchmark/*.cpp) $(wildcard tests/benchmark-exec/*.cp
 DESATOMAT := /bin/false
 
 CXX_STANDARD := 20
+CXX := g++
 
 PYTHON := python3.9
 
 PEDANTIC:=-pedantic
 
-override CXXFLAGS := $(CXXFLAGS) -std=c++$(CXX_STANDARD) -Iinclude -Isrell_include -O3 $(PEDANTIC) -Wall -Wextra -Werror -Wconversion -mavx2 -msse4.2
-LDFLAGS := -lstdc++ 
+override CXXFLAGS := $(CXXFLAGS) -std=c++$(CXX_STANDARD) -Iinclude -Isrell_include -O3 $(PEDANTIC) -Wall -Wextra -Werror -Wconversion -march=native -mtune=native -mavx2 -msse4.2 -mfma -mbmi2 -mlzcnt -mpopcnt -funroll-loops -ffast-math -flto
+LDFLAGS := -lstdc++ -flto 
 
 TESTS := $(wildcard tests/*.cpp) $(wildcard tests/benchmark/*.cpp)
 TRUE_TARGETS := $(TARGETS:%.cpp=%)

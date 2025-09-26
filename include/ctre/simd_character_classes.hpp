@@ -20,6 +20,12 @@ template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator,
 inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
 
 template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_direct_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count);
+
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_direct_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count);
+
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count);
 
 template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
@@ -158,10 +164,21 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
     size_t count = 0;
     
     if (can_use_simd()) {
-        if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-            current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
-        } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
-            current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
+        // Check if this is a single character pattern
+        if constexpr (requires { simd_pattern_trait<PatternType>::single_char; }) {
+            constexpr char target_char = simd_pattern_trait<PatternType>::single_char;
+            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+                current = match_single_char_repeat_avx2<target_char, MinCount, MaxCount>(current, last, flags, count);
+            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+                current = match_single_char_repeat_sse42<target_char, MinCount, MaxCount>(current, last, flags, count);
+            }
+        } else {
+            // Character class patterns
+            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+                current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
+            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+                current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
+            }
         }
     }
     
@@ -186,11 +203,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
     constexpr char min_char = simd_pattern_trait<SetType>::min_char;
     constexpr char max_char = simd_pattern_trait<SetType>::max_char;
     const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
-    // For small ranges (≤10 chars), use optimized small range approach
-    constexpr size_t range_size = max_char - min_char + 1;
-    if constexpr (range_size <= 10) {
-        return match_small_range_avx2<min_char, max_char, MinCount, MaxCount>(current, last, flags, count);
-    }
+    // Small range check is now handled at dispatch level
     
     __m256i min_vec = _mm256_set1_epi8(min_char);
     __m256i max_vec = _mm256_set1_epi8(max_char);
@@ -262,11 +275,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
     constexpr char min_char = simd_pattern_trait<SetType>::min_char;
     constexpr char max_char = simd_pattern_trait<SetType>::max_char;
     const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
-    // For small ranges (≤10 chars), use optimized small range approach
-    constexpr size_t range_size = max_char - min_char + 1;
-    if constexpr (range_size <= 10) {
-        return match_small_range_sse42<min_char, max_char, MinCount, MaxCount>(current, last, flags, count);
-    }
+    // Small range check is now handled at dispatch level
     
     __m128i min_vec = _mm_set1_epi8(min_char);
     __m128i max_vec = _mm_set1_epi8(max_char);
@@ -347,9 +356,11 @@ inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterat
 // ============================================================================
 
 template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+inline Iterator match_small_range_direct_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
     const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
     
+    // For very small ranges (≤5 chars), use direct character comparison
+    constexpr size_t range_size = MaxChar - MinChar + 1;
     
     // Process full 32-byte chunks
     while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
@@ -360,28 +371,70 @@ inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
         __m256i result = _mm256_setzero_si256();
         
-        // Use range comparison instead of character-by-character loop
-        __m256i min_vec = _mm256_set1_epi8(MinChar);
-        __m256i max_vec = _mm256_set1_epi8(MaxChar);
-        
-        if (case_insensitive) {
-            __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
-            __m256i min_lower = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
-            __m256i max_lower = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
+        // Direct character comparison for each character in the range
+        if constexpr (range_size == 1) {
+            __m256i char_vec = _mm256_set1_epi8(MinChar);
+            __m256i char_lower = case_insensitive ? _mm256_or_si256(char_vec, _mm256_set1_epi8(0x20)) : char_vec;
+            __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
+            result = _mm256_cmpeq_epi8(data_lower, char_lower);
+        } else if constexpr (range_size == 2) {
+            __m256i char0_vec = _mm256_set1_epi8(MinChar);
+            __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+            __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+            __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+            __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
             
-            __m256i min_minus_one = _mm256_sub_epi8(min_lower, _mm256_set1_epi8(1));
-            __m256i ge_min = _mm256_cmpgt_epi8(data_lower, min_minus_one);
-            __m256i max_plus_one = _mm256_add_epi8(max_lower, _mm256_set1_epi8(1));
-            __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data_lower);
+            __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+            __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+            result = _mm256_or_si256(match0, match1);
+        } else if constexpr (range_size == 3) {
+            __m256i char0_vec = _mm256_set1_epi8(MinChar);
+            __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+            __m256i char2_vec = _mm256_set1_epi8(MinChar + 2);
+            __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+            __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+            __m256i char2_lower = case_insensitive ? _mm256_or_si256(char2_vec, _mm256_set1_epi8(0x20)) : char2_vec;
+            __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
             
-            result = _mm256_and_si256(ge_min, le_max);
-        } else {
-            __m256i min_minus_one = _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1));
-            __m256i ge_min = _mm256_cmpgt_epi8(data, min_minus_one);
-            __m256i max_plus_one = _mm256_add_epi8(max_vec, _mm256_set1_epi8(1));
-            __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data);
+            __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+            __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+            __m256i match2 = _mm256_cmpeq_epi8(data_lower, char2_lower);
+            result = _mm256_or_si256(_mm256_or_si256(match0, match1), match2);
+        } else if constexpr (range_size == 4) {
+            __m256i char0_vec = _mm256_set1_epi8(MinChar);
+            __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+            __m256i char2_vec = _mm256_set1_epi8(MinChar + 2);
+            __m256i char3_vec = _mm256_set1_epi8(MinChar + 3);
+            __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+            __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+            __m256i char2_lower = case_insensitive ? _mm256_or_si256(char2_vec, _mm256_set1_epi8(0x20)) : char2_vec;
+            __m256i char3_lower = case_insensitive ? _mm256_or_si256(char3_vec, _mm256_set1_epi8(0x20)) : char3_vec;
+            __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
             
-            result = _mm256_and_si256(ge_min, le_max);
+            __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+            __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+            __m256i match2 = _mm256_cmpeq_epi8(data_lower, char2_lower);
+            __m256i match3 = _mm256_cmpeq_epi8(data_lower, char3_lower);
+            result = _mm256_or_si256(_mm256_or_si256(match0, match1), _mm256_or_si256(match2, match3));
+        } else if constexpr (range_size == 5) {
+            __m256i char0_vec = _mm256_set1_epi8(MinChar);
+            __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+            __m256i char2_vec = _mm256_set1_epi8(MinChar + 2);
+            __m256i char3_vec = _mm256_set1_epi8(MinChar + 3);
+            __m256i char4_vec = _mm256_set1_epi8(MinChar + 4);
+            __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+            __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+            __m256i char2_lower = case_insensitive ? _mm256_or_si256(char2_vec, _mm256_set1_epi8(0x20)) : char2_vec;
+            __m256i char3_lower = case_insensitive ? _mm256_or_si256(char3_vec, _mm256_set1_epi8(0x20)) : char3_vec;
+            __m256i char4_lower = case_insensitive ? _mm256_or_si256(char4_vec, _mm256_set1_epi8(0x20)) : char4_vec;
+            __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
+            
+            __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+            __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+            __m256i match2 = _mm256_cmpeq_epi8(data_lower, char2_lower);
+            __m256i match3 = _mm256_cmpeq_epi8(data_lower, char3_lower);
+            __m256i match4 = _mm256_cmpeq_epi8(data_lower, char4_lower);
+            result = _mm256_or_si256(_mm256_or_si256(_mm256_or_si256(match0, match1), _mm256_or_si256(match2, match3)), match4);
         }
         
         int mask = _mm256_movemask_epi8(result);
@@ -395,16 +448,44 @@ inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const
             break;
         }
     }
-
-    char min_char = case_insensitive ? (MinChar | 0x20) : MinChar;
-    char max_char = case_insensitive ? (MaxChar | 0x20) : MaxChar;
     
+    // Process remaining characters with scalar
     for (; current < last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         char c = *current;
-        if (case_insensitive) {
-            c |= 0x20;  // Convert to lowercase
+        bool matches = false;
+        
+        if constexpr (range_size == 1) {
+            char target = case_insensitive ? (MinChar | 0x20) : MinChar;
+            matches = (case_insensitive ? (c | 0x20) : c) == target;
+        } else if constexpr (range_size == 2) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1);
+        } else if constexpr (range_size == 3) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2);
+        } else if constexpr (range_size == 4) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+            char target3 = case_insensitive ? ((MinChar + 3) | 0x20) : (MinChar + 3);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2) || (c_lower == target3);
+        } else if constexpr (range_size == 5) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+            char target3 = case_insensitive ? ((MinChar + 3) | 0x20) : (MinChar + 3);
+            char target4 = case_insensitive ? ((MinChar + 4) | 0x20) : (MinChar + 4);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2) || (c_lower == target3) || (c_lower == target4);
         }
-        if (c < min_char || c > max_char) {
+        
+        if (!matches) {
             break;
         }
     }
@@ -413,8 +494,40 @@ inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const
 }
 
 template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_small_range_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    // EFFICIENT: Direct range check to eliminate CTRE function call overhead
+    count = 0;
     const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
+    
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        char c = *current;
+        bool matches = false;
+        
+        if (case_insensitive) {
+            c |= 0x20;  // Convert to lowercase
+            char min_lower = MinChar | 0x20;
+            char max_lower = MaxChar | 0x20;
+            matches = (c >= min_lower && c <= max_lower);
+        } else {
+            matches = (c >= MinChar && c <= MaxChar);
+        }
+        
+        if (matches) {
+            ++current;
+            ++count;
+        } else {
+            break;
+        }
+    }
+    return current;
+}
+
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_direct_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
+    
+    // For very small ranges (≤5 chars), use direct character comparison
+    constexpr size_t range_size = MaxChar - MinChar + 1;
     
     // Process full 16-byte chunks
     while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
@@ -425,28 +538,70 @@ inline Iterator match_small_range_sse42(Iterator current, EndIterator last, cons
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i result = _mm_setzero_si128();
         
-        // Use range comparison instead of character-by-character loop
-        __m128i min_vec = _mm_set1_epi8(MinChar);
-        __m128i max_vec = _mm_set1_epi8(MaxChar);
-        
-        if (case_insensitive) {
-            __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
-            __m128i min_lower = _mm_or_si128(min_vec, _mm_set1_epi8(0x20));
-            __m128i max_lower = _mm_or_si128(max_vec, _mm_set1_epi8(0x20));
+        // Direct character comparison for each character in the range
+        if constexpr (range_size == 1) {
+            __m128i char_vec = _mm_set1_epi8(MinChar);
+            __m128i char_lower = case_insensitive ? _mm_or_si128(char_vec, _mm_set1_epi8(0x20)) : char_vec;
+            __m128i data_lower = case_insensitive ? _mm_or_si128(data, _mm_set1_epi8(0x20)) : data;
+            result = _mm_cmpeq_epi8(data_lower, char_lower);
+        } else if constexpr (range_size == 2) {
+            __m128i char0_vec = _mm_set1_epi8(MinChar);
+            __m128i char1_vec = _mm_set1_epi8(MinChar + 1);
+            __m128i char0_lower = case_insensitive ? _mm_or_si128(char0_vec, _mm_set1_epi8(0x20)) : char0_vec;
+            __m128i char1_lower = case_insensitive ? _mm_or_si128(char1_vec, _mm_set1_epi8(0x20)) : char1_vec;
+            __m128i data_lower = case_insensitive ? _mm_or_si128(data, _mm_set1_epi8(0x20)) : data;
             
-            __m128i min_minus_one = _mm_sub_epi8(min_lower, _mm_set1_epi8(1));
-            __m128i ge_min = _mm_cmpgt_epi8(data_lower, min_minus_one);
-            __m128i max_plus_one = _mm_add_epi8(max_lower, _mm_set1_epi8(1));
-            __m128i le_max = _mm_cmpgt_epi8(max_plus_one, data_lower);
+            __m128i match0 = _mm_cmpeq_epi8(data_lower, char0_lower);
+            __m128i match1 = _mm_cmpeq_epi8(data_lower, char1_lower);
+            result = _mm_or_si128(match0, match1);
+        } else if constexpr (range_size == 3) {
+            __m128i char0_vec = _mm_set1_epi8(MinChar);
+            __m128i char1_vec = _mm_set1_epi8(MinChar + 1);
+            __m128i char2_vec = _mm_set1_epi8(MinChar + 2);
+            __m128i char0_lower = case_insensitive ? _mm_or_si128(char0_vec, _mm_set1_epi8(0x20)) : char0_vec;
+            __m128i char1_lower = case_insensitive ? _mm_or_si128(char1_vec, _mm_set1_epi8(0x20)) : char1_vec;
+            __m128i char2_lower = case_insensitive ? _mm_or_si128(char2_vec, _mm_set1_epi8(0x20)) : char2_vec;
+            __m128i data_lower = case_insensitive ? _mm_or_si128(data, _mm_set1_epi8(0x20)) : data;
             
-            result = _mm_and_si128(ge_min, le_max);
-        } else {
-            __m128i min_minus_one = _mm_sub_epi8(min_vec, _mm_set1_epi8(1));
-            __m128i ge_min = _mm_cmpgt_epi8(data, min_minus_one);
-            __m128i max_plus_one = _mm_add_epi8(max_vec, _mm_set1_epi8(1));
-            __m128i le_max = _mm_cmpgt_epi8(max_plus_one, data);
+            __m128i match0 = _mm_cmpeq_epi8(data_lower, char0_lower);
+            __m128i match1 = _mm_cmpeq_epi8(data_lower, char1_lower);
+            __m128i match2 = _mm_cmpeq_epi8(data_lower, char2_lower);
+            result = _mm_or_si128(_mm_or_si128(match0, match1), match2);
+        } else if constexpr (range_size == 4) {
+            __m128i char0_vec = _mm_set1_epi8(MinChar);
+            __m128i char1_vec = _mm_set1_epi8(MinChar + 1);
+            __m128i char2_vec = _mm_set1_epi8(MinChar + 2);
+            __m128i char3_vec = _mm_set1_epi8(MinChar + 3);
+            __m128i char0_lower = case_insensitive ? _mm_or_si128(char0_vec, _mm_set1_epi8(0x20)) : char0_vec;
+            __m128i char1_lower = case_insensitive ? _mm_or_si128(char1_vec, _mm_set1_epi8(0x20)) : char1_vec;
+            __m128i char2_lower = case_insensitive ? _mm_or_si128(char2_vec, _mm_set1_epi8(0x20)) : char2_vec;
+            __m128i char3_lower = case_insensitive ? _mm_or_si128(char3_vec, _mm_set1_epi8(0x20)) : char3_vec;
+            __m128i data_lower = case_insensitive ? _mm_or_si128(data, _mm_set1_epi8(0x20)) : data;
             
-            result = _mm_and_si128(ge_min, le_max);
+            __m128i match0 = _mm_cmpeq_epi8(data_lower, char0_lower);
+            __m128i match1 = _mm_cmpeq_epi8(data_lower, char1_lower);
+            __m128i match2 = _mm_cmpeq_epi8(data_lower, char2_lower);
+            __m128i match3 = _mm_cmpeq_epi8(data_lower, char3_lower);
+            result = _mm_or_si128(_mm_or_si128(match0, match1), _mm_or_si128(match2, match3));
+        } else if constexpr (range_size == 5) {
+            __m128i char0_vec = _mm_set1_epi8(MinChar);
+            __m128i char1_vec = _mm_set1_epi8(MinChar + 1);
+            __m128i char2_vec = _mm_set1_epi8(MinChar + 2);
+            __m128i char3_vec = _mm_set1_epi8(MinChar + 3);
+            __m128i char4_vec = _mm_set1_epi8(MinChar + 4);
+            __m128i char0_lower = case_insensitive ? _mm_or_si128(char0_vec, _mm_set1_epi8(0x20)) : char0_vec;
+            __m128i char1_lower = case_insensitive ? _mm_or_si128(char1_vec, _mm_set1_epi8(0x20)) : char1_vec;
+            __m128i char2_lower = case_insensitive ? _mm_or_si128(char2_vec, _mm_set1_epi8(0x20)) : char2_vec;
+            __m128i char3_lower = case_insensitive ? _mm_or_si128(char3_vec, _mm_set1_epi8(0x20)) : char3_vec;
+            __m128i char4_lower = case_insensitive ? _mm_or_si128(char4_vec, _mm_set1_epi8(0x20)) : char4_vec;
+            __m128i data_lower = case_insensitive ? _mm_or_si128(data, _mm_set1_epi8(0x20)) : data;
+            
+            __m128i match0 = _mm_cmpeq_epi8(data_lower, char0_lower);
+            __m128i match1 = _mm_cmpeq_epi8(data_lower, char1_lower);
+            __m128i match2 = _mm_cmpeq_epi8(data_lower, char2_lower);
+            __m128i match3 = _mm_cmpeq_epi8(data_lower, char3_lower);
+            __m128i match4 = _mm_cmpeq_epi8(data_lower, char4_lower);
+            result = _mm_or_si128(_mm_or_si128(_mm_or_si128(match0, match1), _mm_or_si128(match2, match3)), match4);
         }
         
         int mask = _mm_movemask_epi8(result);
@@ -461,19 +616,125 @@ inline Iterator match_small_range_sse42(Iterator current, EndIterator last, cons
         }
     }
     
-    char min_char = case_insensitive ? (MinChar | 0x20) : MinChar;
-    char max_char = case_insensitive ? (MaxChar | 0x20) : MaxChar;
-    
+    // Process remaining characters with scalar
     for (; current < last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         char c = *current;
-        if (case_insensitive) {
-            c |= 0x20;  // Convert to lowercase
+        bool matches = false;
+        
+        if constexpr (range_size == 1) {
+            char target = case_insensitive ? (MinChar | 0x20) : MinChar;
+            matches = (case_insensitive ? (c | 0x20) : c) == target;
+        } else if constexpr (range_size == 2) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1);
+        } else if constexpr (range_size == 3) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2);
+        } else if constexpr (range_size == 4) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+            char target3 = case_insensitive ? ((MinChar + 3) | 0x20) : (MinChar + 3);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2) || (c_lower == target3);
+        } else if constexpr (range_size == 5) {
+            char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+            char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+            char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+            char target3 = case_insensitive ? ((MinChar + 3) | 0x20) : (MinChar + 3);
+            char target4 = case_insensitive ? ((MinChar + 4) | 0x20) : (MinChar + 4);
+            char c_lower = case_insensitive ? (c | 0x20) : c;
+            matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2) || (c_lower == target3) || (c_lower == target4);
         }
-        if (c < min_char || c > max_char) {
+        
+        if (!matches) {
             break;
         }
     }
     
+    return current;
+}
+
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    // const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
+    
+    // Process full 16-byte chunks
+    // while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+    //     if (current + 32 <= last) {
+    //         __builtin_prefetch(&*(current + 16), 0, 3);
+    //     }
+        
+    //     __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+    //     __m128i result = _mm_setzero_si128();
+        
+    //     // Simple character-by-character comparison for small ranges
+    //     for (char test_char = MinChar; test_char <= MaxChar; ++test_char) {
+    //         __m128i char_vec = _mm_set1_epi8(test_char);
+    //         __m128i char_lower = case_insensitive ? _mm_or_si128(char_vec, _mm_set1_epi8(0x20)) : char_vec;
+    //         __m128i data_lower = case_insensitive ? _mm_or_si128(data, _mm_set1_epi8(0x20)) : data;
+            
+    //         __m128i match = _mm_cmpeq_epi8(data_lower, char_lower);
+    //         result = _mm_or_si128(result, match);
+    //     }
+        
+    //     int mask = _mm_movemask_epi8(result);
+    //     if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+    //         current += 16;
+    //         count += 16;
+    //     } else {
+    //         int first_mismatch = __builtin_ctz(~mask);
+    //         current += first_mismatch;
+    //         count += first_mismatch;
+    //         break;
+    //     }
+    // }
+    
+    // INEFFICIENT: Manual range checking - much slower than CTRE's optimized matching
+    // char min_char = case_insensitive ? (MinChar | 0x20) : MinChar;
+    // char max_char = case_insensitive ? (MaxChar | 0x20) : MaxChar;
+    
+    // for (; current < last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
+    //     char c = *current;
+    //     if (case_insensitive) {
+    //         c |= 0x20;  // Convert to lowercase
+    //     }
+    //     if (c < min_char || c > max_char) {
+    //         break;
+    //     }
+    // }
+    
+    // return current;
+    
+    // EFFICIENT: Direct range check to eliminate CTRE function call overhead
+    count = 0;
+    const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
+    
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        char c = *current;
+        bool matches = false;
+        
+        if (case_insensitive) {
+            c |= 0x20;  // Convert to lowercase
+            char min_lower = MinChar | 0x20;
+            char max_lower = MaxChar | 0x20;
+            matches = (c >= min_lower && c <= max_lower);
+        } else {
+            matches = (c >= MinChar && c <= MaxChar);
+        }
+        
+        if (matches) {
+            ++current;
+            ++count;
+        } else {
+            break;
+        }
+    }
     return current;
 }
 
