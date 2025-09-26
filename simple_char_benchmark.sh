@@ -54,3 +54,4 @@ echo -e "${YELLOW}• If SIMD is slower, the optimization may not be working${NC
 echo
 
 echo -e "${GREEN}🎉 Benchmark complete!${NC}"
+

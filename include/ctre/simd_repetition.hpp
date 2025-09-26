@@ -17,7 +17,7 @@ inline Iterator match_character_repeat_simd_with_char(Iterator current, const En
 template <typename CharacterType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_character_repeat_simd(Iterator current, const EndIterator last, const flags& f) {
     Iterator start = current;
-    (void)MinCount; (void)MaxCount; // Suppress unused parameter warnings
+    size_t count = 0;
     
     // Try to extract character value at runtime for SIMD optimization
     if (current != last) {
@@ -30,159 +30,22 @@ inline Iterator match_character_repeat_simd(Iterator current, const EndIterator 
         }
     }
     
-    // Fallback to scalar approach for non-matching characters
-    // For patterns like a* (MinCount = 0), we can still match zero characters
-    if (MinCount == 0) {
-        return current; // Match zero characters
-    }
-    
-    return start; // No match
-}
-
-// AVX2 case-sensitive matching
-template <typename Iterator, typename EndIterator>
-inline Iterator match_avx2_case_sensitive(Iterator current, const EndIterator last, char target_char, size_t& count, size_t max_count) {
-    __m256i target_vec = _mm256_set1_epi8(target_char);
-    
-    while (current + 32 <= last && (max_count == 0 || count + 32 <= max_count)) {
-        // Prefetch next iteration's data
-        if (current + 64 <= last) {
-            __builtin_prefetch(&*(current + 32), 0, 3);
-        }
-        
-        __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-        __m256i result = _mm256_cmpeq_epi8(data, target_vec);
-        
-        int mask = _mm256_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
-            current += 32;
-            count += 32;
-        } else {
-            int first_mismatch = __builtin_ctz(~mask);
-            current += first_mismatch;
-            count += first_mismatch;
-            break;
-        }
-    }
-    
-    return current;
-}
-
-// AVX2 case-insensitive matching
-template <typename Iterator, typename EndIterator>
-inline Iterator match_avx2_case_insensitive(Iterator current, const EndIterator last, char target_char, size_t& count, size_t max_count) {
-    __m256i target_lower = _mm256_set1_epi8(target_char | 0x20);
-    
-    while (current + 32 <= last && (max_count == 0 || count + 32 <= max_count)) {
-        // Prefetch next iteration's data
-        if (current + 64 <= last) {
-            __builtin_prefetch(&*(current + 32), 0, 3);
-        }
-        
-        __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-        __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
-        __m256i result = _mm256_cmpeq_epi8(data_lower, target_lower);
-        
-        int mask = _mm256_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
-            current += 32;
-            count += 32;
-        } else {
-            int first_mismatch = __builtin_ctz(~mask);
-            current += first_mismatch;
-            count += first_mismatch;
-            break;
-        }
-    }
-    
-    return current;
-}
-
-// SSE4.2 case-sensitive matching
-template <typename Iterator, typename EndIterator>
-inline Iterator match_sse42_case_sensitive(Iterator current, const EndIterator last, char target_char, size_t& count, size_t max_count) {
-    __m128i target_vec = _mm_set1_epi8(target_char);
-    
-    while (current + 16 <= last && (max_count == 0 || count + 16 <= max_count)) {
-        // Prefetch next iteration's data
-        if (current + 32 <= last) {
-            __builtin_prefetch(&*(current + 16), 0, 3);
-        }
-        
-        __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
-        __m128i result = _mm_cmpeq_epi8(data, target_vec);
-        
-        int mask = _mm_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
-            current += 16;
-            count += 16;
-        } else {
-            int first_mismatch = __builtin_ctz(~mask);
-            current += first_mismatch;
-            count += first_mismatch;
-            break;
-        }
-    }
-    
-    return current;
-}
-
-// SSE4.2 case-insensitive matching
-template <typename Iterator, typename EndIterator>
-inline Iterator match_sse42_case_insensitive(Iterator current, const EndIterator last, char target_char, size_t& count, size_t max_count) {
-    __m128i target_lower = _mm_set1_epi8(target_char | 0x20);
-    
-    while (current + 16 <= last && (max_count == 0 || count + 16 <= max_count)) {
-        // Prefetch next iteration's data
-        if (current + 32 <= last) {
-            __builtin_prefetch(&*(current + 16), 0, 3);
-        }
-        
-        __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
-        __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
-        __m128i result = _mm_cmpeq_epi8(data_lower, target_lower);
-        
-        int mask = _mm_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
-            current += 16;
-            count += 16;
-        } else {
-            int first_mismatch = __builtin_ctz(~mask);
-            current += first_mismatch;
-            count += first_mismatch;
-            break;
-        }
-    }
-    
-    return current;
-}
-
-// Scalar case-sensitive matching
-template <typename Iterator, typename EndIterator>
-inline Iterator match_scalar_case_sensitive(Iterator current, const EndIterator last, char target_char, size_t& count, size_t max_count) {
-    while (current != last && (max_count == 0 || count < max_count)) {
-        if (*current == target_char) {
+    // Fallback to scalar approach
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        if (CharacterType::match_char(*current, f)) {
             ++current;
             ++count;
         } else {
             break;
         }
     }
-    return current;
-}
-
-// Scalar case-insensitive matching
-template <typename Iterator, typename EndIterator>
-inline Iterator match_scalar_case_insensitive(Iterator current, const EndIterator last, char target_char, size_t& count, size_t max_count) {
-    while (current != last && (max_count == 0 || count < max_count)) {
-        if ((*current | 0x20) == (target_char | 0x20)) {
-            ++current;
-            ++count;
-        } else {
-            break;
-        }
+    
+    // Check if we met the minimum requirement
+    if (count >= MinCount) {
+        return current;
+    } else {
+        return start; // No match
     }
-    return current;
 }
 
 // SIMD implementation with known character
@@ -196,27 +59,99 @@ inline Iterator match_character_repeat_simd_with_char(Iterator current, const En
     if constexpr (CTRE_SIMD_ENABLED) {
         // Use AVX2 for bulk matching if available
         if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-            if (case_insensitive) {
-                current = match_avx2_case_insensitive(current, last, target_char, count, MaxCount);
-            } else {
-                current = match_avx2_case_sensitive(current, last, target_char, count, MaxCount);
+            while (count < 32 && (MaxCount == 0 || count < MaxCount)) {
+                __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+            
+                if (case_insensitive) {
+                    // Case-insensitive matching
+                    __m256i target_lower = _mm256_set1_epi8(target_char | 0x20);
+                    __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+                    __m256i result = _mm256_cmpeq_epi8(data_lower, target_lower);
+                    
+                    int mask = _mm256_movemask_epi8(result);
+                    if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+                        current += 32;
+                        count += 32;
+                    } else {
+                        int first_mismatch = __builtin_ctz(~mask);
+                        current += first_mismatch;
+                        count += first_mismatch;
+                        break;
+                    }
+                } else {
+                    // Case-sensitive matching
+                    __m256i target_vec = _mm256_set1_epi8(target_char);
+                    __m256i result = _mm256_cmpeq_epi8(data, target_vec);
+                    
+                    int mask = _mm256_movemask_epi8(result);
+                    if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+                        current += 32;
+                        count += 32;
+                    } else {
+                        int first_mismatch = __builtin_ctz(~mask);
+                        current += first_mismatch;
+                        count += first_mismatch;
+                        break;
+                    }
+                }
             }
         }
         // Use SSE4.2 for medium sequences
         else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
-            if (case_insensitive) {
-                current = match_sse42_case_insensitive(current, last, target_char, count, MaxCount);
-            } else {
-                current = match_sse42_case_sensitive(current, last, target_char, count, MaxCount);
+            while (count < 16 && (MaxCount == 0 || count < MaxCount)) {
+                __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+                
+                if (case_insensitive) {
+                    __m128i target_lower = _mm_set1_epi8(target_char | 0x20);
+                    __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+                    __m128i result = _mm_cmpeq_epi8(data_lower, target_lower);
+                    
+                    int mask = _mm_movemask_epi8(result);
+                    if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+                        current += 16;
+                        count += 16;
+                    } else {
+                        int first_mismatch = __builtin_ctz(~mask);
+                        current += first_mismatch;
+                        count += first_mismatch;
+                        break;
+                    }
+                } else {
+                    __m128i target_vec = _mm_set1_epi8(target_char);
+                    __m128i result = _mm_cmpeq_epi8(data, target_vec);
+                    
+                    int mask = _mm_movemask_epi8(result);
+                    if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+                        current += 16;
+                        count += 16;
+                    } else {
+                        int first_mismatch = __builtin_ctz(~mask);
+                        current += first_mismatch;
+                        count += first_mismatch;
+                        break;
+                    }
+                }
             }
         }
     }
     
     // Handle remaining characters with scalar code
-    if (case_insensitive) {
-        current = match_scalar_case_insensitive(current, last, target_char, count, MaxCount);
-    } else {
-        current = match_scalar_case_sensitive(current, last, target_char, count, MaxCount);
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        if (case_insensitive) {
+            if ((*current | 0x20) == (target_char | 0x20)) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        } else {
+            if (*current == target_char) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        }
     }
     
     // Check if we met the minimum requirement
@@ -231,4 +166,3 @@ inline Iterator match_character_repeat_simd_with_char(Iterator current, const En
 } // namespace ctre
 
 #endif
-

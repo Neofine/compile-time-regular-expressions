@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 
+
 // Benchmark function that prevents compiler optimizations
 template<typename Func>
 double benchmark(Func func, const std::string& name, int iterations = 1000000, int rounds = 5) {

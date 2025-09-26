@@ -6,137 +6,139 @@
 #include "flags_and_modes.hpp"
 #include <immintrin.h>
 #include <array>
+#include <tuple>
 
 namespace ctre {
 namespace simd {
 
 // ============================================================================
-// EXTENSIBLE SIMD PATTERN MATCHING FRAMEWORK
+// FORWARD DECLARATIONS
 // ============================================================================
 
-// Base trait for SIMD-optimizable patterns
+template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
+
+template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
+
+template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_char_class_repeat_scalar(Iterator current, EndIterator last, const flags& flags, size_t& count);
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_scalar(Iterator current, EndIterator last, const flags& flags, size_t& count);
+
+// ============================================================================
+// SIMD PATTERN TRAITS
+// ============================================================================
+
 template <typename PatternType>
 struct simd_pattern_trait {
     static constexpr bool is_simd_optimizable = false;
     static constexpr size_t min_simd_length = 0;
 };
 
-// Trait to detect if a pattern is a set<char_range<A, B>>
-template <typename T>
-struct is_char_range_set_trait : std::false_type {};
+template <auto A, auto B>
+struct simd_pattern_trait<char_range<A, B>> {
+    static constexpr bool is_simd_optimizable = true;
+    static constexpr size_t min_simd_length = 16;
+    static constexpr auto min_char = A;
+    static constexpr auto max_char = B;
+    static constexpr bool is_ascii_range = (A >= 0 && B <= 127);
+    static constexpr bool is_contiguous = true;
+};
 
 template <auto A, auto B>
-struct is_char_range_set_trait<set<char_range<A, B>>> : std::true_type {};
+struct simd_pattern_trait<set<char_range<A, B>>> {
+    static constexpr bool is_simd_optimizable = true;
+    static constexpr size_t min_simd_length = 16;
+    static constexpr auto min_char = A;
+    static constexpr auto max_char = B;
+    static constexpr bool is_ascii_range = (A >= 0 && B <= 127);
+    static constexpr bool is_contiguous = true;
+};
+
+template <auto C>
+struct simd_pattern_trait<set<character<C>>> {
+    static constexpr bool is_simd_optimizable = true;
+    static constexpr size_t min_simd_length = 16;
+    static constexpr auto min_char = C;
+    static constexpr auto max_char = C;
+    static constexpr bool is_ascii_range = (C >= 0 && C <= 127);
+    static constexpr bool is_contiguous = true;
+    static constexpr char single_char = C;
+};
+
+template <auto C>
+struct simd_pattern_trait<character<C>> {
+    static constexpr bool is_simd_optimizable = true;
+    static constexpr size_t min_simd_length = 16;
+    static constexpr auto min_char = C;
+    static constexpr auto max_char = C;
+    static constexpr bool is_ascii_range = (C >= 0 && C <= 127);
+    static constexpr bool is_contiguous = true;
+    static constexpr char single_char = C;
+};
+
+// ============================================================================
+// PATTERN DETECTION TRAITS
+// ============================================================================
+
+template <typename T>
+struct is_char_range_set_trait : std::false_type {
+    using type = std::false_type;
+};
+
+template <auto A, auto B>
+struct is_char_range_set_trait<set<char_range<A, B>>> : std::true_type {
+    using type = std::true_type;
+};
+
+template <auto C>
+struct is_char_range_set_trait<set<character<C>>> : std::true_type {
+    using type = std::true_type;
+};
+
+template <auto C>
+struct is_char_range_set_trait<character<C>> : std::true_type {
+    using type = std::true_type;
+};
 
 template <typename T>
 constexpr bool is_char_range_set() {
     return is_char_range_set_trait<T>::value;
 }
 
-// ============================================================================
-// CHARACTER CLASS SIMD TRAITS
-// ============================================================================
+// Add type alias for evaluation.hpp compatibility
+template <typename T>
+using is_char_range_set_trait_t = is_char_range_set_trait<T>;
 
-// Single character range [a-z], [0-9], etc.
-template <auto A, auto B>
-struct simd_pattern_trait<char_range<A, B>> {
-    static constexpr bool is_simd_optimizable = true;
-    static constexpr size_t min_simd_length = 16; // Use SSE4.2 for 16+ chars
-    
-    static constexpr auto min_char = A;
-    static constexpr auto max_char = B;
-    static constexpr bool is_ascii_range = (A >= 0 && B <= 127);
-    static constexpr bool is_contiguous = true;
-};
+// Make trait accessible in simd namespace for evaluation.hpp
+namespace simd {
+    template <typename T>
+    using is_char_range_set_trait = ctre::simd::is_char_range_set_trait<T>;
+}
 
-// Character range set [a-z], [0-9], etc.
-template <auto A, auto B>
-struct simd_pattern_trait<set<char_range<A, B>>> {
-    static constexpr bool is_simd_optimizable = true;
-    static constexpr size_t min_simd_length = 16; // Use SSE4.2 for 16+ chars
-    
-    static constexpr auto min_char = A;
-    static constexpr auto max_char = B;
-    static constexpr bool is_ascii_range = (A >= 0 && B <= 127);
-    static constexpr bool is_contiguous = true;
-};
-
-// Character enumeration [abc], [xyz], etc.
-template <auto... Cs>
-struct simd_pattern_trait<enumeration<Cs...>> {
-    static constexpr bool is_simd_optimizable = (sizeof...(Cs) <= 16); // Limit for SIMD efficiency
-    static constexpr size_t min_simd_length = 32; // Use AVX2 for 32+ chars
-    
-    static constexpr auto chars = std::array{Cs...};
-    static constexpr size_t char_count = sizeof...(Cs);
-};
-
-// Character set [a-z0-9], [A-Za-z], etc.
-template <typename... Content>
-struct simd_pattern_trait<set<Content...>> {
-    static constexpr bool is_simd_optimizable = (sizeof...(Content) <= 4); // Limit complexity
-    static constexpr size_t min_simd_length = 32; // Use AVX2 for 32+ chars
-};
-
-// Negative set [^a-z], [^0-9], etc.
-template <typename... Content>
-struct simd_pattern_trait<negative_set<Content...>> {
-    static constexpr bool is_simd_optimizable = (sizeof...(Content) <= 4); // Limit complexity
-    static constexpr size_t min_simd_length = 32; // Use AVX2 for 32+ chars
-};
+// Helper function to check if character is ASCII alpha
+constexpr bool is_ascii_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
 
 // ============================================================================
-// SIMD CHARACTER CLASS MATCHING IMPLEMENTATIONS
+// UNIFIED SIMD MATCHING FUNCTIONS
 // ============================================================================
 
-// ============================================================================
-// DIRECT CHARACTER CLASS REPETITION FUNCTIONS
-// ============================================================================
-
-
-// Forward declarations
-template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count);
-
-template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count);
-
-template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_scalar(Iterator current, EndIterator last, const flags& flags, size_t& count);
-
-
-// Generic SIMD repetition matcher - dispatches to appropriate implementation
 template <typename PatternType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator last, const flags& flags) {
-    // Check if this is a set<char_range<A, B>> pattern
-    if constexpr (is_char_range_set<PatternType>()) {
-        // Use SIMD for bulk matching if available and enabled
+    if constexpr (!is_char_range_set<PatternType>()) {
+        // Fallback to scalar for non-SIMD patterns
         Iterator start = current;
         size_t count = 0;
-        
-        if (can_use_simd()) {
-            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-                // AVX2 path - use generic character class matching
-                current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
-            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
-                // SSE4.2 path
-                current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
-            }
-        }
-        
-        // Handle remaining characters with scalar fallback
-        current = match_char_class_repeat_scalar<PatternType, MinCount, MaxCount>(current, last, flags, count);
-        
-        // Check if we met the minimum requirement
-        if (count >= MinCount) {
-            return current;
-        }
-        return start; // No match
-    } else {
-        // Fall back to scalar implementation for other pattern types
-        Iterator start = current;
-        size_t count = 0;
-        
         while (current != last && (MaxCount == 0 || count < MaxCount)) {
             if (PatternType::match_char(*current, flags)) {
                 ++current;
@@ -145,50 +147,319 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
                 break;
             }
         }
-        
-        if (count >= MinCount) {
-            return current;
-        }
-        return start;
+        return (count >= MinCount) ? current : start;
     }
+
+    Iterator start = current;
+    size_t count = 0;
+    
+    if (can_use_simd()) {
+        if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+            current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
+        } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+            current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
+        }
+    }
+    */
+    
+    // Handle remaining characters with scalar fallback
+    current = match_char_class_repeat_scalar<PatternType, MinCount, MaxCount>(current, last, flags, count);
+    
+    return (count >= MinCount || MinCount == 0) ? current : start;
+}
+
+// ============================================================================
+// SMALL RANGE OPTIMIZATIONS (≤10 characters)
+// ============================================================================
+
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_repeat_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    constexpr size_t range_size = MaxChar - MinChar + 1;
+    const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
+    
+    // Create lookup table for valid characters
+    std::array<bool, 256> valid_chars{};
+    for (char c = MinChar; c <= MaxChar; ++c) {
+        valid_chars[static_cast<unsigned char>(c)] = true;
+        if (case_insensitive) {
+            valid_chars[static_cast<unsigned char>(c ^ 0x20)] = true; // Toggle case
+        }
+    }
+    */
+    
+    // Process full 32-byte chunks
+    while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+        if (current + 64 <= last) {
+            __builtin_prefetch(&*(current + 32), 0, 3);
+        }
+        
+        __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+        __m256i result = _mm256_setzero_si256();
+        
+        // Check each character in the range
+        for (char c = MinChar; c <= MaxChar; ++c) {
+            __m256i char_vec = _mm256_set1_epi8(c);
+            __m256i matches = _mm256_cmpeq_epi8(data, char_vec);
+            result = _mm256_or_si256(result, matches);
+            
+            if (case_insensitive) {
+                char lower_c = c | 0x20;
+                __m256i lower_vec = _mm256_set1_epi8(lower_c);
+                __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+                __m256i lower_matches = _mm256_cmpeq_epi8(data_lower, lower_vec);
+                result = _mm256_or_si256(result, lower_matches);
+            }
+        }
+        
+        int mask = _mm256_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+            current += 32;
+            count += 32;
+        } else {
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
+            break;
+        }
+    }
+    */
+    
+    // Process remaining characters
+    if (current < last && (MaxCount == 0 || count < MaxCount)) {
+        // Use scalar processing instead of expensive std::distance
+        // size_t remaining = std::distance(current, last);
+        // Scalar processing for remaining characters
+        while (current < last && (MaxCount == 0 || count < MaxCount)) {
+            char c = *current;
+            bool matches = false;
+            
+            for (char test_char = MinChar; test_char <= MaxChar; ++test_char) {
+                if (c == test_char) {
+                    matches = true;
+                    break;
+                }
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    char lower_test = test_char | 0x20;
+                    if (lower_c == lower_test) {
+                        matches = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (matches) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        }
+        
+        // Old SIMD code (commented out due to performance issues)
+        /*
+        if (remaining > 0) {
+            __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+            __m256i result = _mm256_setzero_si256();
+            
+            for (char c = MinChar; c <= MaxChar; ++c) {
+                __m256i char_vec = _mm256_set1_epi8(c);
+                __m256i matches = _mm256_cmpeq_epi8(data, char_vec);
+                result = _mm256_or_si256(result, matches);
+                
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    __m256i lower_vec = _mm256_set1_epi8(lower_c);
+                    __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+                    __m256i lower_matches = _mm256_cmpeq_epi8(data_lower, lower_vec);
+                    result = _mm256_or_si256(result, lower_matches);
+                }
+            }
+            
+            int mask = _mm256_movemask_epi8(result);
+            mask &= (1 << remaining) - 1;
+            
+            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
+                current = last;
+                count += remaining;
+            } else {
+                int first_mismatch = __builtin_ctz(~mask);
+                current += first_mismatch;
+                count += first_mismatch;
+            }
+        }
+    }
+    */
+    
+    return current;
+}
+
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_repeat_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    constexpr size_t range_size = MaxChar - MinChar + 1;
+    const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
+    
+    // Process full 16-byte chunks
+    while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+        if (current + 32 <= last) {
+            __builtin_prefetch(&*(current + 16), 0, 3);
+        }
+        
+        __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+        __m128i result = _mm_setzero_si128();
+        
+        // Check each character in the range
+        for (char c = MinChar; c <= MaxChar; ++c) {
+            __m128i char_vec = _mm_set1_epi8(c);
+            __m128i matches = _mm_cmpeq_epi8(data, char_vec);
+            result = _mm_or_si128(result, matches);
+            
+            if (case_insensitive) {
+                char lower_c = c | 0x20;
+                __m128i lower_vec = _mm_set1_epi8(lower_c);
+                __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+                __m128i lower_matches = _mm_cmpeq_epi8(data_lower, lower_vec);
+                result = _mm_or_si128(result, lower_matches);
+            }
+        }
+        
+        int mask = _mm_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+            current += 16;
+            count += 16;
+        } else {
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
+            break;
+        }
+    }
+    */
+    
+    // Process remaining characters
+    if (current < last && (MaxCount == 0 || count < MaxCount)) {
+        // Use scalar processing instead of expensive std::distance
+        // size_t remaining = std::distance(current, last);
+        // Scalar processing for remaining characters
+        while (current < last && (MaxCount == 0 || count < MaxCount)) {
+            char c = *current;
+            bool matches = false;
+            
+            for (char test_char = MinChar; test_char <= MaxChar; ++test_char) {
+                if (c == test_char) {
+                    matches = true;
+                    break;
+                }
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    char lower_test = test_char | 0x20;
+                    if (lower_c == lower_test) {
+                        matches = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (matches) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        }
+        
+        // Old SIMD code (commented out due to performance issues)
+        /*
+        if (remaining > 0) {
+            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+            __m128i result = _mm_setzero_si128();
+            
+            for (char c = MinChar; c <= MaxChar; ++c) {
+                __m128i char_vec = _mm_set1_epi8(c);
+                __m128i matches = _mm_cmpeq_epi8(data, char_vec);
+                result = _mm_or_si128(result, matches);
+                
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    __m128i lower_vec = _mm_set1_epi8(lower_c);
+                    __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+                    __m128i lower_matches = _mm_cmpeq_epi8(data_lower, lower_vec);
+                    result = _mm_or_si128(result, lower_matches);
+                }
+            }
+            
+            int mask = _mm_movemask_epi8(result);
+            mask &= (1 << remaining) - 1;
+            
+            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
+                current = last;
+                count += remaining;
+            } else {
+                int first_mismatch = __builtin_ctz(~mask);
+                current += first_mismatch;
+                count += first_mismatch;
+            }
+        }
+    }
+    */
+    
+    return current;
 }
 
 // ============================================================================
 // GENERIC CHARACTER CLASS SIMD IMPLEMENTATIONS
 // ============================================================================
 
-
-// Generic AVX2 character class repetition matching
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
-    // Use compile-time range detection for optimal SIMD
-    if constexpr (requires { typename SetType::min_char; typename SetType::max_char; }) {
-        // If the SetType has compile-time min/max, use them directly
-        constexpr char min_char = SetType::min_char;
-        constexpr char max_char = SetType::max_char;
-        
-        __m256i min_vec = _mm256_set1_epi8(min_char);
-        __m256i max_vec = _mm256_set1_epi8(max_char);
-        
+inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator& last, const flags& flags, size_t& count) {
+    
+    if constexpr (!simd_pattern_trait<SetType>::is_simd_optimizable) {
+        return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
+    }
+
+    constexpr char min_char = simd_pattern_trait<SetType>::min_char;
+    constexpr char max_char = simd_pattern_trait<SetType>::max_char;
+    const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
+    constexpr size_t range_size = max_char - min_char + 1;
+    
+    // For small ranges (≤10 chars), use direct character comparison instead of range comparison
+    if constexpr (range_size <= 10) {
+        return match_small_range_repeat_avx2<min_char, max_char, MinCount, MaxCount>(current, last, flags, count);
+    }
+    
+    __m256i min_vec = _mm256_set1_epi8(min_char);
+    __m256i max_vec = _mm256_set1_epi8(max_char);
+    
+        // Process full 32-byte chunks
         while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-            // Prefetch next iteration's data
             if (current + 64 <= last) {
                 __builtin_prefetch(&*(current + 32), 0, 3);
             }
             
             __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+            __m256i result;
             
-            // Check if data >= min_char (data > min_char-1)
-            __m256i min_minus_one = _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1));
-            __m256i ge_min = _mm256_cmpgt_epi8(data, min_minus_one);
-            // Check if data <= max_char (data < max_char+1)
-            __m256i max_plus_one = _mm256_add_epi8(max_vec, _mm256_set1_epi8(1));
-            __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data);
-            
-            __m256i result = _mm256_and_si256(ge_min, le_max);
+            if (case_insensitive) {
+                __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+                __m256i min_lower = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
+                __m256i max_lower = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
+                
+                __m256i min_minus_one = _mm256_sub_epi8(min_lower, _mm256_set1_epi8(1));
+                __m256i ge_min = _mm256_cmpgt_epi8(data_lower, min_minus_one);
+                __m256i max_plus_one = _mm256_add_epi8(max_lower, _mm256_set1_epi8(1));
+                __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data_lower);
+                
+                result = _mm256_and_si256(ge_min, le_max);
+            } else {
+                __m256i min_minus_one = _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1));
+                __m256i ge_min = _mm256_cmpgt_epi8(data, min_minus_one);
+                __m256i max_plus_one = _mm256_add_epi8(max_vec, _mm256_set1_epi8(1));
+                __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data);
+                
+                result = _mm256_and_si256(ge_min, le_max);
+            }
             
             int mask = _mm256_movemask_epi8(result);
-            
             if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
                 current += 32;
                 count += 32;
@@ -199,66 +470,120 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, EndIterator last,
                 break;
             }
         }
-    } else {
-        // Fallback to scalar for unknown ranges
-        return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
+    
+    // Process remaining characters with scalar (much faster for small amounts)
+    while (current < last && (MaxCount == 0 || count < MaxCount)) {
+        char c = *current;
+        bool matches = false;
+        
+        if (case_insensitive) {
+            char c_lower = c | 0x20;
+            char min_lower = min_char | 0x20;
+            char max_lower = max_char | 0x20;
+            matches = (c_lower >= min_lower && c_lower <= max_lower);
+        } else {
+            matches = (c >= min_char && c <= max_char);
+        }
+        
+        if (matches) {
+            ++current;
+            ++count;
+        } else {
+            break;
+        }
     }
+    */
     
     return current;
 }
 
-
-// Generic SSE4.2 character class repetition matching
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count) {
-    // Use compile-time range detection for optimal SIMD
-    if constexpr (requires { typename SetType::min_char; typename SetType::max_char; }) {
-        // If the SetType has compile-time min/max, use them directly
-        constexpr char min_char = SetType::min_char;
-        constexpr char max_char = SetType::max_char;
+inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterator& last, const flags& flags, size_t& count) {
+    if constexpr (!simd_pattern_trait<SetType>::is_simd_optimizable) {
+        return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
+    }
+
+    constexpr char min_char = simd_pattern_trait<SetType>::min_char;
+    constexpr char max_char = simd_pattern_trait<SetType>::max_char;
+    const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
+    constexpr size_t range_size = max_char - min_char + 1;
+    
+    // For small ranges (≤10 chars), use direct character comparison instead of range comparison
+    if constexpr (range_size <= 10) {
+        return match_small_range_repeat_sse42<min_char, max_char, MinCount, MaxCount>(current, last, flags, count);
+    }
+    
+    __m128i min_vec = _mm_set1_epi8(min_char);
+    __m128i max_vec = _mm_set1_epi8(max_char);
+    
+    // Process full 16-byte chunks
+    while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+        if (current + 32 <= last) {
+            __builtin_prefetch(&*(current + 16), 0, 3);
+        }
         
-        __m128i min_vec = _mm_set1_epi8(min_char);
-        __m128i max_vec = _mm_set1_epi8(max_char);
+        __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+        __m128i result;
         
-        while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
-            // Prefetch next iteration's data
-            if (current + 32 <= last) {
-                __builtin_prefetch(&*(current + 16), 0, 3);
-            }
+        if (case_insensitive) {
+            __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+            __m128i min_lower = _mm_or_si128(min_vec, _mm_set1_epi8(0x20));
+            __m128i max_lower = _mm_or_si128(max_vec, _mm_set1_epi8(0x20));
             
-            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+            __m128i min_minus_one = _mm_sub_epi8(min_lower, _mm_set1_epi8(1));
+            __m128i ge_min = _mm_cmpgt_epi8(data_lower, min_minus_one);
+            __m128i max_plus_one = _mm_add_epi8(max_lower, _mm_set1_epi8(1));
+            __m128i le_max = _mm_cmpgt_epi8(max_plus_one, data_lower);
             
-            // Check if data >= min_char (data > min_char-1)
+            result = _mm_and_si128(ge_min, le_max);
+        } else {
             __m128i min_minus_one = _mm_sub_epi8(min_vec, _mm_set1_epi8(1));
             __m128i ge_min = _mm_cmpgt_epi8(data, min_minus_one);
-            // Check if data <= max_char (data < max_char+1)
             __m128i max_plus_one = _mm_add_epi8(max_vec, _mm_set1_epi8(1));
             __m128i le_max = _mm_cmpgt_epi8(max_plus_one, data);
             
-            __m128i result = _mm_and_si128(ge_min, le_max);
-            
-            int mask = _mm_movemask_epi8(result);
-            
-            if (static_cast<unsigned int>(mask) == 0xFFFFU) {
-                current += 16;
-                count += 16;
-            } else {
-                int first_mismatch = __builtin_ctz(~mask);
-                current += first_mismatch;
-                count += first_mismatch;
-                break;
-            }
+            result = _mm_and_si128(ge_min, le_max);
         }
-    } else {
-        // Fallback to scalar for unknown ranges
-        return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
+        
+        int mask = _mm_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+            current += 16;
+            count += 16;
+        } else {
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
+            break;
+        }
     }
+    */
+    
+    // Process remaining characters with scalar (much faster for small amounts)
+    while (current < last && (MaxCount == 0 || count < MaxCount)) {
+        char c = *current;
+        bool matches = false;
+        
+        if (case_insensitive) {
+            char c_lower = c | 0x20;
+            char min_lower = min_char | 0x20;
+            char max_lower = max_char | 0x20;
+            matches = (c_lower >= min_lower && c_lower <= max_lower);
+        } else {
+            matches = (c >= min_char && c <= max_char);
+        }
+        
+        if (matches) {
+            ++current;
+            ++count;
+        } else {
+            break;
+        }
+    }
+    */
     
     return current;
 }
 
-
-// Generic scalar character class repetition matching
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_char_class_repeat_scalar(Iterator current, EndIterator last, const flags& flags, size_t& count) {
     while (current != last && (MaxCount == 0 || count < MaxCount)) {
@@ -269,122 +594,400 @@ inline Iterator match_char_class_repeat_scalar(Iterator current, EndIterator las
             break;
         }
     }
+    */
     return current;
 }
 
 // ============================================================================
-// PATTERN-SPECIFIC SIMD IMPLEMENTATIONS
+// SMALL RANGE OPTIMIZATIONS (≤10 characters)
 // ============================================================================
 
-
-// AVX2 implementation for char_range
-template <auto A, auto B, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_range_repeat_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
-    constexpr char min_char = static_cast<char>(A);
-    constexpr char max_char = static_cast<char>(B);
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    constexpr size_t range_size = MaxChar - MinChar + 1;
+    const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
     
-    __m256i min_vec = _mm256_set1_epi8(min_char);
-    __m256i max_vec = _mm256_set1_epi8(max_char);
+    // Create lookup table for valid characters (compile-time)
+    constexpr std::array<bool, 256> valid_chars = []() {
+        std::array<bool, 256> chars{};
+        for (char c = MinChar; c <= MaxChar; ++c) {
+            chars[static_cast<unsigned char>(c)] = true;
+        }
+        return chars;
+    }();
     
+    // Process full 32-byte chunks
     while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-        // Prefetch next iteration's data
         if (current + 64 <= last) {
             __builtin_prefetch(&*(current + 32), 0, 3);
         }
         
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+        __m256i result = _mm256_setzero_si256();
         
-        // Check if data >= min_char (data > min_char-1)
-        __m256i min_minus_one = _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1));
-        __m256i ge_min = _mm256_cmpgt_epi8(data, min_minus_one);
-        // Check if data <= max_char (data < max_char+1)
-        __m256i max_plus_one = _mm256_add_epi8(max_vec, _mm256_set1_epi8(1));
-        __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data);
-        
-        __m256i result = _mm256_and_si256(ge_min, le_max);
+        // Check each character in the range using direct comparison
+        for (char c = MinChar; c <= MaxChar; ++c) {
+            __m256i char_vec = _mm256_set1_epi8(c);
+            __m256i matches = _mm256_cmpeq_epi8(data, char_vec);
+            result = _mm256_or_si256(result, matches);
+            
+            if (case_insensitive) {
+                char lower_c = c | 0x20;
+                __m256i lower_vec = _mm256_set1_epi8(lower_c);
+                __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+                __m256i lower_matches = _mm256_cmpeq_epi8(data_lower, lower_vec);
+                result = _mm256_or_si256(result, lower_matches);
+            }
+        }
         
         int mask = _mm256_movemask_epi8(result);
         if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
-            // All 32 characters match
             current += 32;
             count += 32;
         } else {
-            // Find first mismatch
             int first_mismatch = __builtin_ctz(~mask);
             current += first_mismatch;
             count += first_mismatch;
             break;
         }
     }
+    */
+    
+    // Process remaining characters
+    if (current < last && (MaxCount == 0 || count < MaxCount)) {
+        // Use scalar processing instead of expensive std::distance
+        // size_t remaining = std::distance(current, last);
+        // Scalar processing for remaining characters
+        while (current < last && (MaxCount == 0 || count < MaxCount)) {
+            char c = *current;
+            bool matches = false;
+            
+            for (char test_char = MinChar; test_char <= MaxChar; ++test_char) {
+                if (c == test_char) {
+                    matches = true;
+                    break;
+                }
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    char lower_test = test_char | 0x20;
+                    if (lower_c == lower_test) {
+                        matches = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (matches) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        }
+        
+        // Old SIMD code (commented out due to performance issues)
+        /*
+        if (remaining > 0) {
+            __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+            __m256i result = _mm256_setzero_si256();
+            
+            for (char c = MinChar; c <= MaxChar; ++c) {
+                __m256i char_vec = _mm256_set1_epi8(c);
+                __m256i matches = _mm256_cmpeq_epi8(data, char_vec);
+                result = _mm256_or_si256(result, matches);
+                
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    __m256i lower_vec = _mm256_set1_epi8(lower_c);
+                    __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+                    __m256i lower_matches = _mm256_cmpeq_epi8(data_lower, lower_vec);
+                    result = _mm256_or_si256(result, lower_matches);
+                }
+            }
+            
+            int mask = _mm256_movemask_epi8(result);
+            mask &= (1 << remaining) - 1;
+            
+            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
+                current = last;
+                count += remaining;
+            } else {
+                int first_mismatch = __builtin_ctz(~mask);
+                current += first_mismatch;
+                count += first_mismatch;
+            }
+        }
+    }
+    */
     
     return current;
 }
 
-// SSE4.2 implementation for char_range
-template <auto A, auto B, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_range_repeat_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count) {
-    constexpr char min_char = static_cast<char>(A);
-    constexpr char max_char = static_cast<char>(B);
+template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_small_range_sse42(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    constexpr size_t range_size = MaxChar - MinChar + 1;
+    const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
     
-    __m128i min_vec = _mm_set1_epi8(min_char);
-    __m128i max_vec = _mm_set1_epi8(max_char);
-    
+    // Process full 16-byte chunks
     while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
-        // Prefetch next iteration's data
         if (current + 32 <= last) {
             __builtin_prefetch(&*(current + 16), 0, 3);
         }
         
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+        __m128i result = _mm_setzero_si128();
         
-        // Check if data >= min_char (data > min_char-1)
-        __m128i min_minus_one = _mm_sub_epi8(min_vec, _mm_set1_epi8(1));
-        __m128i ge_min = _mm_cmpgt_epi8(data, min_minus_one);
-        // Check if data <= max_char (data < max_char+1)
-        __m128i max_plus_one = _mm_add_epi8(max_vec, _mm_set1_epi8(1));
-        __m128i le_max = _mm_cmpgt_epi8(max_plus_one, data);
-        
-        __m128i result = _mm_and_si128(ge_min, le_max);
+        // Check each character in the range using direct comparison
+        for (char c = MinChar; c <= MaxChar; ++c) {
+            __m128i char_vec = _mm_set1_epi8(c);
+            __m128i matches = _mm_cmpeq_epi8(data, char_vec);
+            result = _mm_or_si128(result, matches);
+            
+            if (case_insensitive) {
+                char lower_c = c | 0x20;
+                __m128i lower_vec = _mm_set1_epi8(lower_c);
+                __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+                __m128i lower_matches = _mm_cmpeq_epi8(data_lower, lower_vec);
+                result = _mm_or_si128(result, lower_matches);
+            }
+        }
         
         int mask = _mm_movemask_epi8(result);
         if (static_cast<unsigned int>(mask) == 0xFFFFU) {
-            // All 16 characters match
             current += 16;
             count += 16;
         } else {
-            // Find first mismatch
             int first_mismatch = __builtin_ctz(~mask);
             current += first_mismatch;
             count += first_mismatch;
             break;
         }
     }
+    */
+    
+    // Process remaining characters
+    if (current < last && (MaxCount == 0 || count < MaxCount)) {
+        // Use scalar processing instead of expensive std::distance
+        // size_t remaining = std::distance(current, last);
+        // Scalar processing for remaining characters
+        while (current < last && (MaxCount == 0 || count < MaxCount)) {
+            char c = *current;
+            bool matches = false;
+            
+            for (char test_char = MinChar; test_char <= MaxChar; ++test_char) {
+                if (c == test_char) {
+                    matches = true;
+                    break;
+                }
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    char lower_test = test_char | 0x20;
+                    if (lower_c == lower_test) {
+                        matches = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (matches) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        }
+        
+        // Old SIMD code (commented out due to performance issues)
+        /*
+        if (remaining > 0) {
+            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+            __m128i result = _mm_setzero_si128();
+            
+            for (char c = MinChar; c <= MaxChar; ++c) {
+                __m128i char_vec = _mm_set1_epi8(c);
+                __m128i matches = _mm_cmpeq_epi8(data, char_vec);
+                result = _mm_or_si128(result, matches);
+                
+                if (case_insensitive) {
+                    char lower_c = c | 0x20;
+                    __m128i lower_vec = _mm_set1_epi8(lower_c);
+                    __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+                    __m128i lower_matches = _mm_cmpeq_epi8(data_lower, lower_vec);
+                    result = _mm_or_si128(result, lower_matches);
+                }
+            }
+            
+            int mask = _mm_movemask_epi8(result);
+            mask &= (1 << remaining) - 1;
+            
+            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
+                current = last;
+                count += remaining;
+            } else {
+                int first_mismatch = __builtin_ctz(~mask);
+                current += first_mismatch;
+                count += first_mismatch;
+            }
+        }
+    }
+    */
     
     return current;
 }
 
-// Scalar implementation for char_range
-template <auto A, auto B, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_range_repeat_scalar(Iterator current, EndIterator last, const flags& flags, size_t& count) {
-    constexpr char min_char = static_cast<char>(A);
-    constexpr char max_char = static_cast<char>(B);
+// ============================================================================
+// SINGLE CHARACTER SIMD IMPLEMENTATIONS
+// ============================================================================
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterator& last, const flags& flags, size_t& count) {
+    
+    const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
+    const __m256i target_vec = _mm256_set1_epi8(TargetChar);
+    const __m256i target_lower_vec = case_insensitive ? _mm256_set1_epi8(TargetChar | 0x20) : target_vec;
+    
+    // Process full 32-byte chunks
+    while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+        if (current + 64 <= last) {
+            __builtin_prefetch(&*(current + 32), 0, 3);
+        }
+        
+        __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+        __m256i result;
+        
+        if (case_insensitive) {
+            __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+            result = _mm256_cmpeq_epi8(data_lower, target_lower_vec);
+        } else {
+            result = _mm256_cmpeq_epi8(data, target_vec);
+        }
+        
+        int mask = _mm256_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+            current += 32;
+            count += 32;
+        } else {
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
+            break;
+        }
+    }
+    */
+    
+    // Process remaining characters with scalar (much faster for small amounts)
+    while (current < last && (MaxCount == 0 || count < MaxCount)) {
+        if (case_insensitive) {
+            if ((*current | 0x20) == (TargetChar | 0x20)) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        } else {
+            if (*current == TargetChar) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        }
+    }
+    */
+    
+    return current;
+}
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterator& last, const flags& flags, size_t& count) {
+    const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
+    const __m128i target_vec = _mm_set1_epi8(TargetChar);
+    const __m128i target_lower_vec = case_insensitive ? _mm_set1_epi8(TargetChar | 0x20) : target_vec;
+    
+    // Process full 16-byte chunks
+    while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+        if (current + 32 <= last) {
+            __builtin_prefetch(&*(current + 16), 0, 3);
+        }
+        
+        __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+        __m128i result;
+        
+        if (case_insensitive) {
+            __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+            result = _mm_cmpeq_epi8(data_lower, target_lower_vec);
+        } else {
+            result = _mm_cmpeq_epi8(data, target_vec);
+        }
+        
+        int mask = _mm_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+            current += 16;
+            count += 16;
+        } else {
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
+            break;
+        }
+    }
+    */
+    
+    // Process remaining characters with scalar (much faster for small amounts)
+    while (current < last && (MaxCount == 0 || count < MaxCount)) {
+        if (case_insensitive) {
+            if ((*current | 0x20) == (TargetChar | 0x20)) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        } else {
+            if (*current == TargetChar) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
+        }
+    }
+    */
+    
+    return current;
+}
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_scalar(Iterator current, EndIterator last, const flags& flags, size_t& count) {
+    static int debug_count = 0;
+    if (++debug_count % 10000 == 0) {
+        printf("DEBUG: match_single_char_repeat_scalar called for char '%c'\n", TargetChar);
+    }
+    
+    const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
     
     while (current != last && (MaxCount == 0 || count < MaxCount)) {
-        char character = *current;
-        if (character >= min_char && character <= max_char) {
+        char c = *current;
+        bool matches = false;
+        
+        if (case_insensitive) {
+            char c_lower = c | 0x20;
+            char target_lower = TargetChar | 0x20;
+            matches = (c_lower == target_lower);
+        } else {
+            matches = (c == TargetChar);
+        }
+        
+        if (matches) {
             ++current;
             ++count;
         } else {
             break;
         }
     }
+    */
     
     return current;
 }
-
-// ============================================================================
-// SPECIALIZED CHARACTER CLASS REPETITION FUNCTIONS
-// ============================================================================
 
 
 } // namespace simd

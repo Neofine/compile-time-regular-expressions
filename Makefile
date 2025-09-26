@@ -177,3 +177,66 @@ simd_character_class_benchmark_disabled: tests/simd_character_class_benchmark_di
 tests/simd_character_class_benchmark_disabled: tests/simd_character_class_benchmark.cpp
 	$(CXX) -std=c++20 -Iinclude -Isrell_include -O1 -pedantic -Wall -Wextra -Werror -Wconversion -MMD -march=native -DCTRE_DISABLE_SIMD -c tests/simd_character_class_benchmark.cpp -o tests/simd_character_class_benchmark_disabled.o
 	$(CXX) tests/simd_character_class_benchmark_disabled.o -o tests/simd_character_class_benchmark_disabled
+
+simd_vs_nosimd_benchmark: tests/simd_vs_nosimd_benchmark
+	./tests/simd_vs_nosimd_benchmark
+
+tests/simd_vs_nosimd_benchmark: tests/simd_vs_nosimd_benchmark.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/simd_vs_nosimd_benchmark.cpp -o tests/simd_vs_nosimd_benchmark.o
+	$(CXX) tests/simd_vs_nosimd_benchmark.o -o tests/simd_vs_nosimd_benchmark -lstdc++
+
+simd_vs_nosimd_benchmark_disabled: tests/simd_vs_nosimd_benchmark_disabled
+	./tests/simd_vs_nosimd_benchmark_disabled
+
+tests/simd_vs_nosimd_benchmark_disabled: tests/simd_vs_nosimd_benchmark.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -DCTRE_DISABLE_SIMD -c tests/simd_vs_nosimd_benchmark.cpp -o tests/simd_vs_nosimd_benchmark_disabled.o
+	$(CXX) tests/simd_vs_nosimd_benchmark_disabled.o -o tests/simd_vs_nosimd_benchmark_disabled -lstdc++
+
+single_char_simd_test: tests/single_char_simd_test
+	./tests/single_char_simd_test
+
+tests/single_char_simd_test: tests/single_char_simd_test.cpp
+	$(CXX) $(CXXFLAGS) -MMD -march=native -c tests/single_char_simd_test.cpp -o tests/single_char_simd_test.o
+	$(CXX) tests/single_char_simd_test.o -o tests/single_char_simd_test -lstdc++
+
+minimal_simd_test: tests/minimal_simd_test
+	./tests/minimal_simd_test
+
+tests/minimal_simd_test: tests/minimal_simd_test.cpp
+	$(CXX) -std=c++20 -O3 -march=native -c tests/minimal_simd_test.cpp -o tests/minimal_simd_test.o
+	$(CXX) tests/minimal_simd_test.o -o tests/minimal_simd_test -lstdc++
+
+trait_test: tests/trait_test
+	./tests/trait_test
+
+tests/trait_test: tests/trait_test.cpp
+	$(CXX) -std=c++20 -O3 -march=native -Iinclude -c tests/trait_test.cpp -o tests/trait_test.o
+	$(CXX) tests/trait_test.o -o tests/trait_test -lstdc++
+
+simple_trait_test: tests/simple_trait_test
+	./tests/simple_trait_test
+
+tests/simple_trait_test: tests/simple_trait_test.cpp
+	$(CXX) -std=c++20 -O3 -march=native -c tests/simple_trait_test.cpp -o tests/simple_trait_test.o
+	$(CXX) tests/simple_trait_test.o -o tests/simple_trait_test -lstdc++
+
+debug_ast_structure: tests/debug_ast_structure
+	./tests/debug_ast_structure
+
+tests/debug_ast_structure: tests/debug_ast_structure.cpp
+	$(CXX) -std=c++20 -O3 -march=native -Iinclude -c tests/debug_ast_structure.cpp -o tests/debug_ast_structure.o
+	$(CXX) tests/debug_ast_structure.o -o tests/debug_ast_structure -lstdc++
+
+debug_a_star: tests/debug_a_star
+	./tests/debug_a_star
+
+tests/debug_a_star: tests/debug_a_star.cpp
+	$(CXX) -std=c++20 -O3 -march=native -Iinclude -c tests/debug_a_star.cpp -o tests/debug_a_star.o
+	$(CXX) tests/debug_a_star.o -o tests/debug_a_star -lstdc++
+
+debug_simple_test: tests/debug_simple_test
+	./tests/debug_simple_test
+
+tests/debug_simple_test: tests/debug_simple_test.cpp
+	$(CXX) -std=c++20 -O3 -march=native -Iinclude -c tests/debug_simple_test.cpp -o tests/debug_simple_test.o
+	$(CXX) tests/debug_simple_test.o -o tests/debug_simple_test -lstdc++

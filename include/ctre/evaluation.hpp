@@ -92,6 +92,8 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator, Iterator current, co
 
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, typename CharacterLike, typename... Tail, typename = std::enable_if_t<(MatchesCharacter<CharacterLike>::template value<decltype(*std::declval<Iterator>())>)>> 
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator current, const EndIterator last, const flags & f, R captures, ctll::list<CharacterLike, Tail...>) noexcept {
+	
+	
 	if (current == last) return not_matched;
 	if (!CharacterLike::match_char(*current, f)) return not_matched;
 	
@@ -285,6 +287,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 // lazy repeat
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, size_t A, size_t B, typename... Content, typename... Tail> 
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator current, const EndIterator last, [[maybe_unused]] const flags & f, R captures, ctll::list<lazy_repeat<A,B,Content...>, Tail...>) noexcept {
+	// Debug: lazy_repeat function called
 
 	if constexpr (B != 0 && A > B) {
 		return not_matched;
@@ -336,7 +339,38 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
 	if constexpr ((B != 0) && (A > B)) {
 		return not_matched;
-	} else {
+	}
+
+	// SIMD optimization for possessive repetition patterns at runtime (invisible to user)
+	// Handles both character class patterns ([a-z]*) and single character patterns (a*)
+	if constexpr (sizeof...(Content) == 1) {
+		if (!std::is_constant_evaluated() && simd::can_use_simd()) {
+			using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
+			
+			// Check if this is a character class pattern that can use SIMD
+			if constexpr (simd::is_char_range_set<ContentType>()) {
+				// Use SIMD-optimized character class repetition
+				Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+				if (simd_result != current) {
+					// SIMD found a match, continue with the rest of the pattern
+					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+				}
+			} else {
+				// Check if this is a single character pattern that can use SIMD
+				if constexpr (requires { simd::simd_pattern_trait<ContentType>::single_char; }) {
+					// Use SIMD-optimized single character repetition
+					Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+					if (simd_result != current) {
+						// SIMD found a match, continue with the rest of the pattern
+						return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+					}
+				}
+			}
+		}
+	}
+
+	// Original implementation for non-SIMD patterns
+	{
 		const auto backup_current = current;
 
 		for (size_t i{0}; less_than_or_infinite<B>(i); ++i) {
