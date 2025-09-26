@@ -3,6 +3,7 @@
 #include <chrono>
 #include <vector>
 #include <random>
+#include <limits>
 #include <ctre.hpp>
 
 // Test cases for different SIMD optimizations
@@ -47,7 +48,7 @@ std::string generate_test_string(const std::string& pattern, size_t length) {
         std::string result;
         for (size_t i = 0; i < length; ++i) {
             int val = dis(gen);
-            result += (val < 26) ? ('a' + val) : ('A' + val - 26);
+            result += static_cast<char>((val < 26) ? ('a' + val) : ('A' + val - 26));
         }
         return result;
     } else if (pattern == "[0-9a-f]*") {
@@ -158,12 +159,69 @@ std::string generate_test_string(const std::string& pattern, size_t length) {
 
 
 // Benchmark a single test case
-double benchmark_case(const std::string& pattern_str, const std::string& test_string, int iterations = 10000) {
-    auto start = std::chrono::high_resolution_clock::now();
-    size_t matches = 0;
+double benchmark_case(const std::string& pattern_str, const std::string& test_string, int iterations = 1000000) {
+    // Warmup runs to ensure consistent timing
+    for (int warmup = 0; warmup < 10000; ++warmup) {
+        if (pattern_str == "a*") {
+            ctre::match<"a*">(test_string);
+        } else if (pattern_str == "A*") {
+            ctre::match<"A*">(test_string);
+        } else if (pattern_str == "b*") {
+            ctre::match<"b*">(test_string);
+        } else if (pattern_str == "z*") {
+            ctre::match<"z*">(test_string);
+        } else if (pattern_str == "9*") {
+            ctre::match<"9*">(test_string);
+        } else if (pattern_str == "a+") {
+            ctre::match<"a+">(test_string);
+        } else if (pattern_str == "A+") {
+            ctre::match<"A+">(test_string);
+        } else if (pattern_str == "b+") {
+            ctre::match<"b+">(test_string);
+        } else if (pattern_str == "z+") {
+            ctre::match<"z+">(test_string);
+        } else if (pattern_str == "9+") {
+            ctre::match<"9+">(test_string);
+        } else if (pattern_str == "[a-z]*") {
+            ctre::match<"[a-z]*">(test_string);
+        } else if (pattern_str == "[0-9]*") {
+            ctre::match<"[0-9]*">(test_string);
+        } else if (pattern_str == "[A-Z]*") {
+            ctre::match<"[A-Z]*">(test_string);
+        } else if (pattern_str == "[a-c]*") {
+            ctre::match<"[a-c]*">(test_string);
+        } else if (pattern_str == "[a-e]*") {
+            ctre::match<"[a-e]*">(test_string);
+        } else if (pattern_str == "[x-z]*") {
+            ctre::match<"[x-z]*">(test_string);
+        } else if (pattern_str == "[0-2]*") {
+            ctre::match<"[0-2]*">(test_string);
+        } else if (pattern_str == "[a-z]+") {
+            ctre::match<"[a-z]+">(test_string);
+        } else if (pattern_str == "[0-9]+") {
+            ctre::match<"[0-9]+">(test_string);
+        } else if (pattern_str == "[A-Z]+") {
+            ctre::match<"[A-Z]+">(test_string);
+        } else if (pattern_str == "[a-c]+") {
+            ctre::match<"[a-c]+">(test_string);
+        } else if (pattern_str == "[a-e]+") {
+            ctre::match<"[a-e]+">(test_string);
+        } else if (pattern_str == "[x-z]+") {
+            ctre::match<"[x-z]+">(test_string);
+        } else if (pattern_str == "[0-2]+") {
+            ctre::match<"[0-2]+">(test_string);
+        }
+    }
     
-    // Use appropriate pattern based on string
-    for (int i = 0; i < iterations; ++i) {
+    // Run multiple timing samples and take the minimum for more reliable results
+    double min_time = std::numeric_limits<double>::max();
+    
+    for (int sample = 0; sample < 5; ++sample) {
+        auto start = std::chrono::high_resolution_clock::now();
+        size_t matches = 0;
+        
+        // Use appropriate pattern based on string
+        for (int i = 0; i < iterations; ++i) {
         bool matched = false;
         
         if (pattern_str == "a*") {
@@ -221,10 +279,16 @@ double benchmark_case(const std::string& pattern_str, const std::string& test_st
         }
     }
     
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+        double time_per_match = static_cast<double>(duration.count()) / static_cast<double>(matches);
+        
+        if (time_per_match < min_time) {
+            min_time = time_per_match;
+        }
+    }
     
-    return static_cast<double>(duration.count()) / matches;
+    return min_time;
 }
 
 int main() {
@@ -291,7 +355,7 @@ int main() {
         std::string test_string = generate_test_string(test_case.pattern, length);
         
         // Benchmark with SIMD enabled (default)
-        double simd_time = benchmark_case(test_case.pattern, test_string, 10000);
+        double simd_time = benchmark_case(test_case.pattern, test_string, 100000);
         
         // Output result
         std::cout << test_case.name << "," << simd_time << "\n";

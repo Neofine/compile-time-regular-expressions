@@ -13,8 +13,8 @@ PYTHON := python3.9
 
 PEDANTIC:=-pedantic
 
-override CXXFLAGS := $(CXXFLAGS) -std=c++$(CXX_STANDARD) -Iinclude -Isrell_include -O3 $(PEDANTIC) -Wall -Wextra -Werror -Wconversion
-LDFLAGS := 
+override CXXFLAGS := $(CXXFLAGS) -std=c++$(CXX_STANDARD) -Iinclude -Isrell_include -O3 $(PEDANTIC) -Wall -Wextra -Werror -Wconversion -mavx2 -msse4.2
+LDFLAGS := -lstdc++ 
 
 TESTS := $(wildcard tests/*.cpp) $(wildcard tests/benchmark/*.cpp)
 TRUE_TARGETS := $(TARGETS:%.cpp=%)
