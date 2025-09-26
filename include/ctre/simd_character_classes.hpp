@@ -56,7 +56,7 @@ struct simd_pattern_trait {
 template <auto A, auto B>
 struct simd_pattern_trait<char_range<A, B>> {
     static constexpr bool is_simd_optimizable = true;
-    static constexpr size_t min_simd_length = 16;
+    static constexpr size_t min_simd_length = 8;
     static constexpr auto min_char = A;
     static constexpr auto max_char = B;
     static constexpr bool is_ascii_range = (A >= 0 && B <= 127);
@@ -66,7 +66,7 @@ struct simd_pattern_trait<char_range<A, B>> {
 template <auto A, auto B>
 struct simd_pattern_trait<set<char_range<A, B>>> {
     static constexpr bool is_simd_optimizable = true;
-    static constexpr size_t min_simd_length = 16;
+    static constexpr size_t min_simd_length = 8;
     static constexpr auto min_char = A;
     static constexpr auto max_char = B;
     static constexpr bool is_ascii_range = (A >= 0 && B <= 127);
@@ -76,7 +76,7 @@ struct simd_pattern_trait<set<char_range<A, B>>> {
 template <auto C>
 struct simd_pattern_trait<set<character<C>>> {
     static constexpr bool is_simd_optimizable = true;
-    static constexpr size_t min_simd_length = 16;
+    static constexpr size_t min_simd_length = 8;
     static constexpr auto min_char = C;
     static constexpr auto max_char = C;
     static constexpr bool is_ascii_range = (C >= 0 && C <= 127);
@@ -87,7 +87,7 @@ struct simd_pattern_trait<set<character<C>>> {
 template <auto C>
 struct simd_pattern_trait<character<C>> {
     static constexpr bool is_simd_optimizable = true;
-    static constexpr size_t min_simd_length = 16;
+    static constexpr size_t min_simd_length = 8;
     static constexpr auto min_char = C;
     static constexpr auto max_char = C;
     static constexpr bool is_ascii_range = (C >= 0 && C <= 127);
@@ -110,8 +110,8 @@ struct is_char_range_set_trait<set<char_range<A, B>>> : std::true_type {
 };
 
 template <auto C>
-struct is_char_range_set_trait<set<character<C>>> : std::true_type {
-    using type = std::true_type;
+struct is_char_range_set_trait<set<character<C>>> : std::false_type {
+    using type = std::false_type;
 };
 
 template <auto C>
@@ -217,22 +217,21 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
         __m256i result;
         
+        // Simple range comparison - accept that it's less efficient than single character matching
         if (case_insensitive) {
             __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
             __m256i min_lower = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
             __m256i max_lower = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
             
-            __m256i min_minus_one = _mm256_sub_epi8(min_lower, _mm256_set1_epi8(1));
-            __m256i ge_min = _mm256_cmpgt_epi8(data_lower, min_minus_one);
-            __m256i max_plus_one = _mm256_add_epi8(max_lower, _mm256_set1_epi8(1));
-            __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data_lower);
+            // Range check: (data >= min) && (data <= max)
+            __m256i ge_min = _mm256_cmpgt_epi8(data_lower, _mm256_sub_epi8(min_lower, _mm256_set1_epi8(1)));
+            __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_lower, _mm256_set1_epi8(1)), data_lower);
             
             result = _mm256_and_si256(ge_min, le_max);
         } else {
-            __m256i min_minus_one = _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1));
-            __m256i ge_min = _mm256_cmpgt_epi8(data, min_minus_one);
-            __m256i max_plus_one = _mm256_add_epi8(max_vec, _mm256_set1_epi8(1));
-            __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data);
+            // Range check: (data >= min) && (data <= max)
+            __m256i ge_min = _mm256_cmpgt_epi8(data, _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1)));
+            __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_vec, _mm256_set1_epi8(1)), data);
             
             result = _mm256_and_si256(ge_min, le_max);
         }
