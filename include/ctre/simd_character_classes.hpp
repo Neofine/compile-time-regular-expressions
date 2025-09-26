@@ -160,7 +160,7 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
             current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
         }
     }
-    */
+        // End of commented code
     
     // Handle remaining characters with scalar fallback
     current = match_char_class_repeat_scalar<PatternType, MinCount, MaxCount>(current, last, flags, count);
@@ -185,7 +185,7 @@ inline Iterator match_small_range_repeat_avx2(Iterator current, EndIterator last
             valid_chars[static_cast<unsigned char>(c ^ 0x20)] = true; // Toggle case
         }
     }
-    */
+        // End of commented code
     
     // Process full 32-byte chunks
     while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
@@ -222,7 +222,7 @@ inline Iterator match_small_range_repeat_avx2(Iterator current, EndIterator last
             break;
         }
     }
-    */
+        // End of commented code
     
     // Process remaining characters
     if (current < last && (MaxCount == 0 || count < MaxCount)) {
@@ -255,41 +255,7 @@ inline Iterator match_small_range_repeat_avx2(Iterator current, EndIterator last
                 break;
             }
         }
-        
-        // Old SIMD code (commented out due to performance issues)
-        /*
-        if (remaining > 0) {
-            __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-            __m256i result = _mm256_setzero_si256();
-            
-            for (char c = MinChar; c <= MaxChar; ++c) {
-                __m256i char_vec = _mm256_set1_epi8(c);
-                __m256i matches = _mm256_cmpeq_epi8(data, char_vec);
-                result = _mm256_or_si256(result, matches);
-                
-                if (case_insensitive) {
-                    char lower_c = c | 0x20;
-                    __m256i lower_vec = _mm256_set1_epi8(lower_c);
-                    __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
-                    __m256i lower_matches = _mm256_cmpeq_epi8(data_lower, lower_vec);
-                    result = _mm256_or_si256(result, lower_matches);
-                }
-            }
-            
-            int mask = _mm256_movemask_epi8(result);
-            mask &= (1 << remaining) - 1;
-            
-            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
-                current = last;
-                count += remaining;
-            } else {
-                int first_mismatch = __builtin_ctz(~mask);
-                current += first_mismatch;
-                count += first_mismatch;
-            }
-        }
     }
-    */
     
     return current;
 }
@@ -334,7 +300,7 @@ inline Iterator match_small_range_repeat_sse42(Iterator current, EndIterator las
             break;
         }
     }
-    */
+        // End of commented code
     
     // Process remaining characters
     if (current < last && (MaxCount == 0 || count < MaxCount)) {
@@ -367,41 +333,8 @@ inline Iterator match_small_range_repeat_sse42(Iterator current, EndIterator las
                 break;
             }
         }
-        
-        // Old SIMD code (commented out due to performance issues)
-        /*
-        if (remaining > 0) {
-            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
-            __m128i result = _mm_setzero_si128();
-            
-            for (char c = MinChar; c <= MaxChar; ++c) {
-                __m128i char_vec = _mm_set1_epi8(c);
-                __m128i matches = _mm_cmpeq_epi8(data, char_vec);
-                result = _mm_or_si128(result, matches);
-                
-                if (case_insensitive) {
-                    char lower_c = c | 0x20;
-                    __m128i lower_vec = _mm_set1_epi8(lower_c);
-                    __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
-                    __m128i lower_matches = _mm_cmpeq_epi8(data_lower, lower_vec);
-                    result = _mm_or_si128(result, lower_matches);
-                }
-            }
-            
-            int mask = _mm_movemask_epi8(result);
-            mask &= (1 << remaining) - 1;
-            
-            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
-                current = last;
-                count += remaining;
-            } else {
-                int first_mismatch = __builtin_ctz(~mask);
-                current += first_mismatch;
-                count += first_mismatch;
-            }
-        }
     }
-    */
+        // End of commented code
     
     return current;
 }
@@ -492,7 +425,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             break;
         }
     }
-    */
+        // End of commented code
     
     return current;
 }
@@ -556,7 +489,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
             break;
         }
     }
-    */
+        // End of commented code
     
     // Process remaining characters with scalar (much faster for small amounts)
     while (current < last && (MaxCount == 0 || count < MaxCount)) {
@@ -579,7 +512,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
             break;
         }
     }
-    */
+        // End of commented code
     
     return current;
 }
@@ -594,7 +527,7 @@ inline Iterator match_char_class_repeat_scalar(Iterator current, EndIterator las
             break;
         }
     }
-    */
+        // End of commented code
     return current;
 }
 
@@ -651,7 +584,7 @@ inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const
             break;
         }
     }
-    */
+        // End of commented code
     
     // Process remaining characters
     if (current < last && (MaxCount == 0 || count < MaxCount)) {
@@ -684,41 +617,8 @@ inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const
                 break;
             }
         }
-        
-        // Old SIMD code (commented out due to performance issues)
-        /*
-        if (remaining > 0) {
-            __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-            __m256i result = _mm256_setzero_si256();
-            
-            for (char c = MinChar; c <= MaxChar; ++c) {
-                __m256i char_vec = _mm256_set1_epi8(c);
-                __m256i matches = _mm256_cmpeq_epi8(data, char_vec);
-                result = _mm256_or_si256(result, matches);
-                
-                if (case_insensitive) {
-                    char lower_c = c | 0x20;
-                    __m256i lower_vec = _mm256_set1_epi8(lower_c);
-                    __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
-                    __m256i lower_matches = _mm256_cmpeq_epi8(data_lower, lower_vec);
-                    result = _mm256_or_si256(result, lower_matches);
-                }
-            }
-            
-            int mask = _mm256_movemask_epi8(result);
-            mask &= (1 << remaining) - 1;
-            
-            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
-                current = last;
-                count += remaining;
-            } else {
-                int first_mismatch = __builtin_ctz(~mask);
-                current += first_mismatch;
-                count += first_mismatch;
-            }
-        }
     }
-    */
+        // End of commented code
     
     return current;
 }
@@ -763,7 +663,7 @@ inline Iterator match_small_range_sse42(Iterator current, EndIterator last, cons
             break;
         }
     }
-    */
+        // End of commented code
     
     // Process remaining characters
     if (current < last && (MaxCount == 0 || count < MaxCount)) {
@@ -796,41 +696,8 @@ inline Iterator match_small_range_sse42(Iterator current, EndIterator last, cons
                 break;
             }
         }
-        
-        // Old SIMD code (commented out due to performance issues)
-        /*
-        if (remaining > 0) {
-            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
-            __m128i result = _mm_setzero_si128();
-            
-            for (char c = MinChar; c <= MaxChar; ++c) {
-                __m128i char_vec = _mm_set1_epi8(c);
-                __m128i matches = _mm_cmpeq_epi8(data, char_vec);
-                result = _mm_or_si128(result, matches);
-                
-                if (case_insensitive) {
-                    char lower_c = c | 0x20;
-                    __m128i lower_vec = _mm_set1_epi8(lower_c);
-                    __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
-                    __m128i lower_matches = _mm_cmpeq_epi8(data_lower, lower_vec);
-                    result = _mm_or_si128(result, lower_matches);
-                }
-            }
-            
-            int mask = _mm_movemask_epi8(result);
-            mask &= (1 << remaining) - 1;
-            
-            if (static_cast<unsigned int>(mask) == static_cast<unsigned int>((1 << remaining) - 1)) {
-                current = last;
-                count += remaining;
-            } else {
-                int first_mismatch = __builtin_ctz(~mask);
-                current += first_mismatch;
-                count += first_mismatch;
-            }
-        }
     }
-    */
+        // End of commented code
     
     return current;
 }
@@ -841,6 +708,7 @@ inline Iterator match_small_range_sse42(Iterator current, EndIterator last, cons
 
 template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterator& last, const flags& flags, size_t& count) {
+    // SIMD function called
     
     const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
     const __m256i target_vec = _mm256_set1_epi8(TargetChar);
@@ -873,7 +741,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             break;
         }
     }
-    */
+        // End of commented code
     
     // Process remaining characters with scalar (much faster for small amounts)
     while (current < last && (MaxCount == 0 || count < MaxCount)) {
@@ -893,7 +761,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             }
         }
     }
-    */
+        // End of commented code
     
     return current;
 }
@@ -931,7 +799,7 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
             break;
         }
     }
-    */
+        // End of commented code
     
     // Process remaining characters with scalar (much faster for small amounts)
     while (current < last && (MaxCount == 0 || count < MaxCount)) {
@@ -951,18 +819,13 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
             }
         }
     }
-    */
+        // End of commented code
     
     return current;
 }
 
 template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_single_char_repeat_scalar(Iterator current, EndIterator last, const flags& flags, size_t& count) {
-    static int debug_count = 0;
-    if (++debug_count % 10000 == 0) {
-        printf("DEBUG: match_single_char_repeat_scalar called for char '%c'\n", TargetChar);
-    }
-    
     const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
     
     while (current != last && (MaxCount == 0 || count < MaxCount)) {
@@ -984,7 +847,7 @@ inline Iterator match_single_char_repeat_scalar(Iterator current, EndIterator la
             break;
         }
     }
-    */
+        // End of commented code
     
     return current;
 }
