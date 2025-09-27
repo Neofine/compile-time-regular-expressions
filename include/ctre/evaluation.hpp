@@ -347,27 +347,43 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 		if (!std::is_constant_evaluated() && simd::can_use_simd()) {
 			using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
 			
-			if constexpr (simd::is_char_range_set<ContentType>()) {
-				constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
-				constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
-				constexpr size_t range_size = max_char - min_char + 1;
-				
-				// Skip SIMD for very small ranges (≤1 chars) - let CTRE handle them
-				if constexpr (range_size > 1) {
-					// Use SIMD-optimized character class repetition
+			// Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
+			if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>, char>) {
+				// Check range size first to avoid SIMD code path overhead for small ranges
+				if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
+					constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
+					constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
+					constexpr size_t range_size = max_char - min_char + 1;
+					
+					// Only enter SIMD code path for large ranges (>5 chars)
+					if constexpr (range_size > 5) {
+						if constexpr (simd::is_char_range_set<ContentType>()) {
+							// Only use SIMD for ASCII characters to avoid overflow
+							if constexpr (simd::simd_pattern_trait<ContentType>::is_ascii_range) {
+								// Use SIMD-optimized character class repetition for large ranges
+								Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+								if (simd_result != current) {
+									// SIMD found a match, continue with the rest of the pattern
+									return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+								}
+							}
+						} else {
+							// Use SIMD-optimized character repetition for non-character-range patterns
+							Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+							if (simd_result != current) {
+								// SIMD found a match, continue with the rest of the pattern
+								return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+							}
+						}
+					}
+					// For small ranges (≤10 chars), completely skip SIMD code path - fall through to CTRE's regular evaluation
+				} else {
+					// For patterns without min_char/max_char, always use SIMD
 					Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
 					if (simd_result != current) {
 						// SIMD found a match, continue with the rest of the pattern
 						return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
 					}
-				}
-				// For small ranges, fall through to CTRE's regular evaluation
-			} else {
-				// Use SIMD-optimized character repetition for non-character-range patterns
-				Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-				if (simd_result != current) {
-					// SIMD found a match, continue with the rest of the pattern
-					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
 				}
 			}
 		}
@@ -445,36 +461,52 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 		return not_matched;
 	}
 
-	// SIMD optimization for repetition patterns at runtime (invisible to user)
-	if constexpr (sizeof...(Content) == 1) {
-		if (!std::is_constant_evaluated() && simd::can_use_simd()) {
-			using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
-			
-			if constexpr (simd::is_char_range_set<ContentType>()) {
-				constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
-				constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
-				constexpr size_t range_size = max_char - min_char + 1;
+		// SIMD optimization for repetition patterns at runtime (invisible to user)
+		if constexpr (sizeof...(Content) == 1) {
+			if (!std::is_constant_evaluated() && simd::can_use_simd()) {
+				using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
 				
-				// Skip SIMD for very small ranges (≤1 chars) - let CTRE handle them
-				if constexpr (range_size > 1) {
-					// Use SIMD-optimized character class repetition
-					Iterator simd_result = simd::match_pattern_repeat_simd<Content..., A, B>(current, last, f);
-					if (simd_result != current) {
-						// SIMD found a match, continue with the rest of the pattern
-						return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+				// Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
+				if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>, char>) {
+					// Check range size first to avoid SIMD code path overhead for small ranges
+					if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
+						constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
+						constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
+						constexpr size_t range_size = max_char - min_char + 1;
+						
+						// Only enter SIMD code path for large ranges (>5 chars)
+						if constexpr (range_size > 5) {
+							if constexpr (simd::is_char_range_set<ContentType>()) {
+								// Only use SIMD for ASCII characters to avoid overflow
+								if constexpr (simd::simd_pattern_trait<ContentType>::is_ascii_range) {
+									// Use SIMD-optimized character class repetition for large ranges
+									Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+									if (simd_result != current) {
+										// SIMD found a match, continue with the rest of the pattern
+										return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+									}
+								}
+							} else {
+								// Use SIMD-optimized character repetition for non-character-range patterns
+								Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+								if (simd_result != current) {
+									// SIMD found a match, continue with the rest of the pattern
+									return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+								}
+							}
+						}
+						// For small ranges (≤10 chars), completely skip SIMD code path - fall through to CTRE's regular evaluation
+					} else {
+						// For patterns without min_char/max_char, always use SIMD
+						Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+						if (simd_result != current) {
+							// SIMD found a match, continue with the rest of the pattern
+							return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+						}
 					}
-				}
-				// For small ranges, fall through to CTRE's regular evaluation
-			} else {
-				// Use SIMD-optimized character repetition for non-character-range patterns
-				Iterator simd_result = simd::match_pattern_repeat_simd<Content..., A, B>(current, last, f);
-				if (simd_result != current) {
-					// SIMD found a match, continue with the rest of the pattern
-					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
 				}
 			}
 		}
-	}
 
 #ifndef CTRE_DISABLE_GREEDY_OPT
 	if constexpr (!collides(calculate_first(Content{}...), calculate_first(Tail{}...))) {
