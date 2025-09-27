@@ -39,7 +39,7 @@ int main() {
     
     std::cout << "SIMD enabled time: " << simd_time << " ns\n";
     std::cout << "Total matches: " << match_count << "\n";
-    std::cout << "Average per match: " << simd_time / (double)match_count << " ns\n";
+    std::cout << "Average per match: " << static_cast<double>(simd_time) / static_cast<double>(match_count) << " ns\n";
     
     return 0;
 }

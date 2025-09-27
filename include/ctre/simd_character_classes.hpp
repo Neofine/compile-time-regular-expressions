@@ -145,10 +145,15 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
         Iterator start = current;
         size_t count = 0;
         while (current != last && (MaxCount == 0 || count < MaxCount)) {
-            if (PatternType::match_char(*current, flags)) {
-                ++current;
-                ++count;
+            if constexpr (requires { PatternType::match_char(*current, flags); }) {
+                if (PatternType::match_char(*current, flags)) {
+                    ++current;
+                    ++count;
+                } else {
+                    break;
+                }
             } else {
+                // For patterns without match_char, fall back to general evaluation
                 break;
             }
         }
@@ -168,11 +173,34 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
                 current = match_single_char_repeat_sse42<target_char, MinCount, MaxCount>(current, last, flags, count);
             }
         } else {
-            // Character class patterns
-            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-                current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
-            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
-                current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
+            // Check if this pattern has min_char and max_char traits (character ranges)
+            if constexpr (requires { simd_pattern_trait<PatternType>::min_char; simd_pattern_trait<PatternType>::max_char; }) {
+                constexpr char min_char = simd_pattern_trait<PatternType>::min_char;
+                constexpr char max_char = simd_pattern_trait<PatternType>::max_char;
+                constexpr size_t range_size = max_char - min_char + 1;
+                
+                if constexpr (range_size <= 10) {
+                    // Use optimized small range functions
+                    if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+                        current = match_small_range_avx2<min_char, max_char, MinCount, MaxCount>(current, last, flags, count);
+                    } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+                        current = match_small_range_sse42<min_char, max_char, MinCount, MaxCount>(current, last, flags, count);
+                    }
+                } else {
+                    // Large character class patterns
+                    if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+                        current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
+                    } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+                        current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
+                    }
+                }
+            } else {
+                // Fallback to general character class patterns
+                if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+                    current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
+                } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+                    current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
+                }
             }
         }
     }
@@ -195,8 +223,9 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
     }
 
-    constexpr char min_char = simd_pattern_trait<SetType>::min_char;
-    constexpr char max_char = simd_pattern_trait<SetType>::max_char;
+    if constexpr (requires { simd_pattern_trait<SetType>::min_char; simd_pattern_trait<SetType>::max_char; }) {
+        constexpr char min_char = simd_pattern_trait<SetType>::min_char;
+        constexpr char max_char = simd_pattern_trait<SetType>::max_char;
     const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
     // Small range check is now handled at dispatch level
     
@@ -204,9 +233,9 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
     __m256i max_vec = _mm256_set1_epi8(max_char);
     
     // Process full 32-byte chunks
-    while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-        if (current + 64 <= last) {
-            __builtin_prefetch(&*(current + 32), 0, 3);
+    while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+        if (current == last) {
+            break; // We're at the end
         }
         
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
@@ -247,7 +276,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
     char min_char_lower = case_insensitive ? (min_char | 0x20) : min_char;
     char max_char_lower = case_insensitive ? (max_char | 0x20) : max_char;
     
-    for (; current < last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
+    for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         char c = *current;
         if (case_insensitive) {
             c |= 0x20;  // Convert to lowercase
@@ -257,7 +286,11 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         }
     }
     
-    return current;
+        return current;
+    } else {
+        // Fallback for patterns without min_char/max_char traits
+        return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
+    }
 }
 
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
@@ -266,8 +299,9 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
     }
 
-    constexpr char min_char = simd_pattern_trait<SetType>::min_char;
-    constexpr char max_char = simd_pattern_trait<SetType>::max_char;
+    if constexpr (requires { simd_pattern_trait<SetType>::min_char; simd_pattern_trait<SetType>::max_char; }) {
+        constexpr char min_char = simd_pattern_trait<SetType>::min_char;
+        constexpr char max_char = simd_pattern_trait<SetType>::max_char;
     const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
     // Small range check is now handled at dispatch level
     
@@ -275,9 +309,9 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
     __m128i max_vec = _mm_set1_epi8(max_char);
     
     // Process full 16-byte chunks
-    while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
-        if (current + 32 <= last) {
-            __builtin_prefetch(&*(current + 16), 0, 3);
+    while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+        if (current == last) {
+            break; // We're at the end
         }
         
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
@@ -319,7 +353,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
     char min_char_lower = case_insensitive ? (min_char | 0x20) : min_char;
     char max_char_lower = case_insensitive ? (max_char | 0x20) : max_char;
     
-    for (; current < last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
+    for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         char c = *current;
         if (case_insensitive) {
             c |= 0x20;  // Convert to lowercase
@@ -329,16 +363,25 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         }
     }
     
-    return current;
+        return current;
+    } else {
+        // Fallback for patterns without min_char/max_char traits
+        return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
+    }
 }
 
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, const flags& flags, size_t& count) {
     while (current != last && (MaxCount == 0 || count < MaxCount)) {
-        if (SetType::match_char(*current, flags)) {
-            ++current;
-            ++count;
+        if constexpr (requires { SetType::match_char(*current, flags); }) {
+            if (SetType::match_char(*current, flags)) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
         } else {
+            // For patterns without match_char, fall back to general evaluation
             break;
         }
     }
@@ -352,30 +395,163 @@ inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterat
 
 template <char MinChar, char MaxChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_small_range_avx2(Iterator current, EndIterator last, const flags& flags, size_t& count) {
-    // EFFICIENT: Direct range check to eliminate CTRE function call overhead
     count = 0;
     const bool case_insensitive = is_ascii_alpha(MinChar) && is_ascii_alpha(MaxChar) && ctre::is_case_insensitive(flags);
+    constexpr size_t range_size = MaxChar - MinChar + 1;
     
-    while (current != last && (MaxCount == 0 || count < MaxCount)) {
-        char c = *current;
-        bool matches = false;
-        
-        if (case_insensitive) {
-            c |= 0x20;  // Convert to lowercase
-            char min_lower = MinChar | 0x20;
-            char max_lower = MaxChar | 0x20;
-            matches = (c >= min_lower && c <= max_lower);
-        } else {
-            matches = (c >= MinChar && c <= MaxChar);
+    // For very small ranges (≤5 chars), use direct character comparison with SIMD
+    if constexpr (range_size <= 5) {
+        // Process full 32-byte chunks with SIMD
+        while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+            if (current == last) {
+                break; // We're at the end
+            }
+            
+            __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+            __m256i result = _mm256_setzero_si256();
+            
+            // Direct character comparison for each character in the range
+            if constexpr (range_size == 1) {
+                __m256i char_vec = _mm256_set1_epi8(MinChar);
+                __m256i char_lower = case_insensitive ? _mm256_or_si256(char_vec, _mm256_set1_epi8(0x20)) : char_vec;
+                __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
+                result = _mm256_cmpeq_epi8(data_lower, char_lower);
+            } else if constexpr (range_size == 2) {
+                __m256i char0_vec = _mm256_set1_epi8(MinChar);
+                __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+                __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+                __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+                __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
+                
+                __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+                __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+                result = _mm256_or_si256(match0, match1);
+            } else if constexpr (range_size == 3) {
+                __m256i char0_vec = _mm256_set1_epi8(MinChar);
+                __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+                __m256i char2_vec = _mm256_set1_epi8(MinChar + 2);
+                __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+                __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+                __m256i char2_lower = case_insensitive ? _mm256_or_si256(char2_vec, _mm256_set1_epi8(0x20)) : char2_vec;
+                __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
+                
+                __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+                __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+                __m256i match2 = _mm256_cmpeq_epi8(data_lower, char2_lower);
+                result = _mm256_or_si256(_mm256_or_si256(match0, match1), match2);
+            } else if constexpr (range_size == 4) {
+                __m256i char0_vec = _mm256_set1_epi8(MinChar);
+                __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+                __m256i char2_vec = _mm256_set1_epi8(MinChar + 2);
+                __m256i char3_vec = _mm256_set1_epi8(MinChar + 3);
+                __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+                __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+                __m256i char2_lower = case_insensitive ? _mm256_or_si256(char2_vec, _mm256_set1_epi8(0x20)) : char2_vec;
+                __m256i char3_lower = case_insensitive ? _mm256_or_si256(char3_vec, _mm256_set1_epi8(0x20)) : char3_vec;
+                __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
+                
+                __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+                __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+                __m256i match2 = _mm256_cmpeq_epi8(data_lower, char2_lower);
+                __m256i match3 = _mm256_cmpeq_epi8(data_lower, char3_lower);
+                result = _mm256_or_si256(_mm256_or_si256(match0, match1), _mm256_or_si256(match2, match3));
+            } else if constexpr (range_size == 5) {
+                __m256i char0_vec = _mm256_set1_epi8(MinChar);
+                __m256i char1_vec = _mm256_set1_epi8(MinChar + 1);
+                __m256i char2_vec = _mm256_set1_epi8(MinChar + 2);
+                __m256i char3_vec = _mm256_set1_epi8(MinChar + 3);
+                __m256i char4_vec = _mm256_set1_epi8(MinChar + 4);
+                __m256i char0_lower = case_insensitive ? _mm256_or_si256(char0_vec, _mm256_set1_epi8(0x20)) : char0_vec;
+                __m256i char1_lower = case_insensitive ? _mm256_or_si256(char1_vec, _mm256_set1_epi8(0x20)) : char1_vec;
+                __m256i char2_lower = case_insensitive ? _mm256_or_si256(char2_vec, _mm256_set1_epi8(0x20)) : char2_vec;
+                __m256i char3_lower = case_insensitive ? _mm256_or_si256(char3_vec, _mm256_set1_epi8(0x20)) : char3_vec;
+                __m256i char4_lower = case_insensitive ? _mm256_or_si256(char4_vec, _mm256_set1_epi8(0x20)) : char4_vec;
+                __m256i data_lower = case_insensitive ? _mm256_or_si256(data, _mm256_set1_epi8(0x20)) : data;
+                
+                __m256i match0 = _mm256_cmpeq_epi8(data_lower, char0_lower);
+                __m256i match1 = _mm256_cmpeq_epi8(data_lower, char1_lower);
+                __m256i match2 = _mm256_cmpeq_epi8(data_lower, char2_lower);
+                __m256i match3 = _mm256_cmpeq_epi8(data_lower, char3_lower);
+                __m256i match4 = _mm256_cmpeq_epi8(data_lower, char4_lower);
+                result = _mm256_or_si256(_mm256_or_si256(_mm256_or_si256(match0, match1), _mm256_or_si256(match2, match3)), match4);
+            }
+            
+            int mask = _mm256_movemask_epi8(result);
+            if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+                current += 32;
+                count += 32;
+            } else {
+                int first_mismatch = __builtin_ctz(~mask);
+                current += first_mismatch;
+                count += first_mismatch;
+                break;
+            }
         }
         
-        if (matches) {
-            ++current;
-            ++count;
-        } else {
-            break;
+        // Process remaining characters with scalar
+        for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
+            char c = *current;
+            bool matches = false;
+            
+            if constexpr (range_size == 1) {
+                char target = case_insensitive ? (MinChar | 0x20) : MinChar;
+                matches = (case_insensitive ? (c | 0x20) : c) == target;
+            } else if constexpr (range_size == 2) {
+                char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+                char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+                char c_lower = case_insensitive ? (c | 0x20) : c;
+                matches = (c_lower == target0) || (c_lower == target1);
+            } else if constexpr (range_size == 3) {
+                char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+                char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+                char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+                char c_lower = case_insensitive ? (c | 0x20) : c;
+                matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2);
+            } else if constexpr (range_size == 4) {
+                char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+                char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+                char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+                char target3 = case_insensitive ? ((MinChar + 3) | 0x20) : (MinChar + 3);
+                char c_lower = case_insensitive ? (c | 0x20) : c;
+                matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2) || (c_lower == target3);
+            } else if constexpr (range_size == 5) {
+                char target0 = case_insensitive ? (MinChar | 0x20) : MinChar;
+                char target1 = case_insensitive ? ((MinChar + 1) | 0x20) : (MinChar + 1);
+                char target2 = case_insensitive ? ((MinChar + 2) | 0x20) : (MinChar + 2);
+                char target3 = case_insensitive ? ((MinChar + 3) | 0x20) : (MinChar + 3);
+                char target4 = case_insensitive ? ((MinChar + 4) | 0x20) : (MinChar + 4);
+                char c_lower = case_insensitive ? (c | 0x20) : c;
+                matches = (c_lower == target0) || (c_lower == target1) || (c_lower == target2) || (c_lower == target3) || (c_lower == target4);
+            }
+            
+            if (!matches) {
+                break;
+            }
+        }
+    } else {
+        // For larger small ranges (6-10 chars), use scalar for now
+        while (current != last && (MaxCount == 0 || count < MaxCount)) {
+            char c = *current;
+            bool matches = false;
+            
+            if (case_insensitive) {
+                c |= 0x20;  // Convert to lowercase
+                char min_lower = MinChar | 0x20;
+                char max_lower = MaxChar | 0x20;
+                matches = (c >= min_lower && c <= max_lower);
+            } else {
+                matches = (c >= MinChar && c <= MaxChar);
+            }
+            
+            if (matches) {
+                ++current;
+                ++count;
+            } else {
+                break;
+            }
         }
     }
+    
     return current;
 }
 
@@ -469,9 +645,9 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     const __m256i target_lower_vec = case_insensitive ? _mm256_set1_epi8(TargetChar | 0x20) : target_vec;
     
     // Process full 32-byte chunks
-    while (current + 32 <= last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-        if (current + 64 <= last) {
-            __builtin_prefetch(&*(current + 32), 0, 3);
+    while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+        if (current == last) {
+            break; // We're at the end
         }
         
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
@@ -499,7 +675,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     // Process remaining characters with scalar (much faster for small amounts)
     char target_char = case_insensitive ? (TargetChar | 0x20) : TargetChar;
     
-    for (; current < last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
+    for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         char c = *current;
         if (case_insensitive) {
             c |= 0x20;  // Convert to lowercase
@@ -519,9 +695,9 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
     const __m128i target_lower_vec = case_insensitive ? _mm_set1_epi8(TargetChar | 0x20) : target_vec;
     
     // Process full 16-byte chunks
-    while (current + 16 <= last && (MaxCount == 0 || count + 16 <= MaxCount)) {
-        if (current + 32 <= last) {
-            __builtin_prefetch(&*(current + 16), 0, 3);
+    while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+        if (current == last) {
+            break; // We're at the end
         }
         
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
@@ -549,7 +725,7 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
     // Process remaining characters with scalar (much faster for small amounts)
     char target_char = case_insensitive ? (TargetChar | 0x20) : TargetChar;
     
-    for (; current < last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
+    for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         char c = *current;
         if (case_insensitive) {
             c |= 0x20;  // Convert to lowercase
