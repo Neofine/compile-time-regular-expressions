@@ -121,8 +121,8 @@ template <typename T>
 using is_char_range_set_trait_t = is_char_range_set_trait<T>;
 
 // Helper function to check if character is ASCII alpha
-constexpr bool is_ascii_alpha(char ch) {
-    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+constexpr bool is_ascii_alpha(char char_val) {
+    return (char_val >= 'a' && char_val <= 'z') || (char_val >= 'A' && char_val <= 'Z');
 }
 
 // ============================================================================
@@ -183,35 +183,40 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
 }
 
 // ============================================================================
-// SMALL RANGE OPTIMIZATIONS (≤5 characters)
+// SMALL RANGE OPTIMIZATIONS (≤3 characters)
 // ============================================================================
 
 // Optimized SIMD for very small ranges (2-3 characters) using direct character comparison
 template <typename Iterator, typename EndIterator>
 inline Iterator match_small_range_direct_avx2(Iterator current, const EndIterator& last, size_t& count,
                                              const std::array<char, 3>& chars, size_t num_chars, bool case_insensitive) {
-    // Create vectors for each character
+    // Create vectors for each character (unrolled for performance)
     __m256i char_vecs[3];
-    for (size_t i = 0; i < num_chars; ++i) {
-        char_vecs[i] = _mm256_set1_epi8(case_insensitive ? (chars[i] | 0x20) : chars[i]);
+    if (num_chars >= 1) {
+        char_vecs[0] = _mm256_set1_epi8(case_insensitive ? (chars[0] | 0x20) : chars[0]);
+    }
+    if (num_chars >= 2) {
+        char_vecs[1] = _mm256_set1_epi8(case_insensitive ? (chars[1] | 0x20) : chars[1]);
+    }
+    if (num_chars >= 3) {
+        char_vecs[2] = _mm256_set1_epi8(case_insensitive ? (chars[2] | 0x20) : chars[2]);
     }
     
     // Process full 32-byte chunks
-    while (current != last && count + 32 <= std::numeric_limits<size_t>::max()) {
-        if (current == last) break;
+    while (current != last) {
         
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
         __m256i result = _mm256_setzero_si256();
         
         if (case_insensitive) {
             __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
-            for (size_t i = 0; i < num_chars; ++i) {
-                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[i]));
-            }
+            if (num_chars >= 1) { result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[0])); }
+            if (num_chars >= 2) { result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[1])); }
+            if (num_chars >= 3) { result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[2])); }
         } else {
-            for (size_t i = 0; i < num_chars; ++i) {
-                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[i]));
-            }
+            if (num_chars >= 1) { result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[0])); }
+            if (num_chars >= 2) { result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[1])); }
+            if (num_chars >= 3) { result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[2])); }
         }
         
         int mask = _mm256_movemask_epi8(result);
@@ -233,28 +238,33 @@ inline Iterator match_small_range_direct_avx2(Iterator current, const EndIterato
 template <typename Iterator, typename EndIterator>
 inline Iterator match_small_range_direct_sse42(Iterator current, const EndIterator& last, size_t& count,
                                               const std::array<char, 3>& chars, size_t num_chars, bool case_insensitive) {
-    // Create vectors for each character
+    // Create vectors for each character (unrolled for performance)
     __m128i char_vecs[3];
-    for (size_t i = 0; i < num_chars; ++i) {
-        char_vecs[i] = _mm_set1_epi8(case_insensitive ? (chars[i] | 0x20) : chars[i]);
+    if (num_chars >= 1) {
+        char_vecs[0] = _mm_set1_epi8(case_insensitive ? (chars[0] | 0x20) : chars[0]);
+    }
+    if (num_chars >= 2) {
+        char_vecs[1] = _mm_set1_epi8(case_insensitive ? (chars[1] | 0x20) : chars[1]);
+    }
+    if (num_chars >= 3) {
+        char_vecs[2] = _mm_set1_epi8(case_insensitive ? (chars[2] | 0x20) : chars[2]);
     }
     
     // Process full 16-byte chunks
-    while (current != last && count + 16 <= std::numeric_limits<size_t>::max()) {
-        if (current == last) break;
+    while (current != last) {
         
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i result = _mm_setzero_si128();
         
         if (case_insensitive) {
             __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
-            for (size_t i = 0; i < num_chars; ++i) {
-                result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[i]));
-            }
+            if (num_chars >= 1) { result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[0])); }
+            if (num_chars >= 2) { result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[1])); }
+            if (num_chars >= 3) { result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[2])); }
         } else {
-            for (size_t i = 0; i < num_chars; ++i) {
-                result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[i]));
-            }
+            if (num_chars >= 1) { result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[0])); }
+            if (num_chars >= 2) { result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[1])); }
+            if (num_chars >= 3) { result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[2])); }
         }
         
         int mask = _mm_movemask_epi8(result);
@@ -291,11 +301,15 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         
         // Small range optimization: use direct character comparison for very small ranges
         if constexpr (range_size <= 3) {
-            std::array<char, 3> chars;
-            size_t num_chars = 0;
-            for (char ch = min_char; ch <= max_char; ++ch) {
-                chars[num_chars++] = ch;
-            }
+            constexpr std::array<char, 3> chars = []() {
+                std::array<char, 3> result = {};
+                size_t idx = 0;
+                for (char char_val = min_char; char_val <= max_char; ++char_val) {
+                    result[idx++] = char_val;
+                }
+                return result;
+            }();
+            constexpr size_t num_chars = range_size;
             current = match_small_range_direct_avx2(current, last, count, chars, num_chars, case_insensitive);
         } else {
             // Use traditional range comparison for larger ranges
@@ -317,7 +331,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     __m256i min_lower = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
                     __m256i max_lower = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
                     
-                    // Range check: (data >= min) && (data <= max)
+                    // Range check: (data >= min) && (data <= max) - optimized
                     __m256i ge_min = _mm256_cmpgt_epi8(data_lower, _mm256_sub_epi8(min_lower, _mm256_set1_epi8(1)));
                     __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_lower, _mm256_set1_epi8(1)), data_lower);
                     
@@ -347,11 +361,11 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             char max_char_lower = case_insensitive ? (max_char | 0x20) : max_char;
             
             for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
-                char ch = *current;
+                char char_val = *current;
                 if (case_insensitive) {
-                    ch |= 0x20;  // Convert to lowercase
+                    char_val |= 0x20;  // Convert to lowercase
                 }
-                if (ch < min_char_lower || ch > max_char_lower) {
+                if (char_val < min_char_lower || char_val > max_char_lower) {
                     break;
                 }
             }
@@ -378,11 +392,15 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         
         // Small range optimization: use direct character comparison for very small ranges
         if constexpr (range_size <= 3) {
-            std::array<char, 3> chars;
-            size_t num_chars = 0;
-            for (char ch = min_char; ch <= max_char; ++ch) {
-                chars[num_chars++] = ch;
-            }
+            constexpr std::array<char, 3> chars = []() {
+                std::array<char, 3> result = {};
+                size_t idx = 0;
+                for (char char_val = min_char; char_val <= max_char; ++char_val) {
+                    result[idx++] = char_val;
+                }
+                return result;
+            }();
+            constexpr size_t num_chars = range_size;
             current = match_small_range_direct_sse42(current, last, count, chars, num_chars, case_insensitive);
         } else {
             // Use traditional range comparison for larger ranges
@@ -435,11 +453,11 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
     char max_char_lower = case_insensitive ? (max_char | 0x20) : max_char;
     
     for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
-        char ch = *current;
+        char char_val = *current;
         if (case_insensitive) {
-            ch |= 0x20;  // Convert to lowercase
+            char_val |= 0x20;  // Convert to lowercase
         }
-        if (ch < min_char_lower || ch > max_char_lower) {
+        if (char_val < min_char_lower || char_val > max_char_lower) {
             break;
         }
     }
@@ -512,11 +530,11 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
     char target_char = case_insensitive ? (TargetChar | 0x20) : TargetChar;
     
     for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
-        char ch = *current;
+        char char_val = *current;
         if (case_insensitive) {
-            ch |= 0x20;  // Convert to lowercase
+            char_val |= 0x20;  // Convert to lowercase
         }
-        if (ch != target_char) {
+        if (char_val != target_char) {
             break;
         }
     }
@@ -531,11 +549,11 @@ inline Iterator match_single_char_repeat_scalar(Iterator current, const EndItera
     char target_char = case_insensitive ? (TargetChar | 0x20) : TargetChar;
     
     for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
-        char ch = *current;
+        char char_val = *current;
         if (case_insensitive) {
-            ch |= 0x20;  // Convert to lowercase
+            char_val |= 0x20;  // Convert to lowercase
         }
-        if (ch != target_char) {
+        if (char_val != target_char) {
             break;
         }
     }
