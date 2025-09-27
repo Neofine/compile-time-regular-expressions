@@ -166,21 +166,21 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
             if constexpr (requires { simd_pattern_trait<PatternType>::min_char; simd_pattern_trait<PatternType>::max_char; }) {
                 constexpr char min_char = simd_pattern_trait<PatternType>::min_char;
                 constexpr char max_char = simd_pattern_trait<PatternType>::max_char;
-                constexpr size_t range_size = max_char - min_char + 1;
+                // constexpr size_t range_size = max_char - min_char + 1;
                 
                 // Small ranges (≤5 chars) are handled by evaluation.hpp - they skip SIMD entirely
                 // Only large ranges (>5 chars) use SIMD
-                if constexpr (range_size > 5) {
+                // if constexpr (range_size > 5) {
                     // Large character class patterns
                     if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
                         current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
                     } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
                         current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
                     }
-                } else {
-                    // Small ranges (≤5 chars) - skip SIMD entirely, let CTRE handle them
-                    // Do nothing here, fall back to scalar evaluation
-                }
+                // } else {
+                //     // Small ranges (≤5 chars) - skip SIMD entirely, let CTRE handle them
+                //     // Do nothing here, fall back to scalar evaluation
+                // }
             } else {
                 // Fallback to general character class patterns
                 if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
