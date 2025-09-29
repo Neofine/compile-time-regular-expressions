@@ -5,7 +5,9 @@
 #include "flags_and_modes.hpp"
 #include "simd_detection.hpp"
 #include "simd_repetition.hpp"
+#include "simd_shufti.hpp"
 #include <array>
+#include <ctll/list.hpp>
 #include <immintrin.h>
 
 namespace ctre {
@@ -135,6 +137,15 @@ constexpr bool is_ascii_alpha(char char_val) {
 
 template <typename PatternType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator last, const flags& flags) {
+    // Try SHUFTI first for patterns that would benefit from it
+    if constexpr (requires { simd::shufti_pattern_trait<PatternType>::is_shufti_optimizable; }) {
+        if constexpr (simd::shufti_pattern_trait<PatternType>::is_shufti_optimizable &&
+                      simd::shufti_pattern_trait<PatternType>::should_use_shufti) {
+            // Use SHUFTI for this pattern - ALWAYS use SHUFTI, don't fall back
+            return simd::match_pattern_repeat_shufti<PatternType, MinCount, MaxCount>(current, last, flags);
+        }
+    }
+
     if constexpr (!is_char_range_set<PatternType>()) {
         // Fallback to scalar for non-SIMD patterns
         Iterator start = current;
@@ -161,10 +172,21 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
     if (can_use_simd()) {
         // Check if this is a single character pattern
         if constexpr (requires { simd_pattern_trait<PatternType>::single_char; }) {
+            // For single characters, use scalar implementation as it's faster than SIMD for small strings
+            // SIMD overhead is too large for single character patterns on small strings
+            Iterator start = current;
+            size_t count = 0;
             constexpr char target_char = simd_pattern_trait<PatternType>::single_char;
-            // Use optimized single character SIMD from simd_repetition.hpp
-            current =
-                simd::match_character_repeat_simd_with_char<MinCount, MaxCount>(current, last, flags, target_char);
+
+            while (current != last && (MaxCount == 0 || count < MaxCount)) {
+                if (*current == target_char) {
+                    ++current;
+                    ++count;
+                } else {
+                    break;
+                }
+            }
+            return (count >= MinCount) ? current : start;
         } else {
             // Check if this pattern has min_char and max_char traits (character ranges)
             if constexpr (requires {
@@ -340,8 +362,19 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         const bool case_insensitive =
             is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
 
-        // For very small ranges (≤3 chars), scalar implementation is faster
-        if constexpr (range_size <= 3) {
+        // For single character patterns, use optimized SIMD repetition
+        if constexpr (range_size == 1) {
+            // Use SIMD repetition for single character patterns
+            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+                return match_single_char_repeat_avx2<min_char, MinCount, MaxCount>(current, last, flags, count);
+            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+                return match_single_char_repeat_sse42<min_char, MinCount, MaxCount>(current, last, flags, count);
+            } else {
+                return match_single_char_repeat_scalar<min_char, MinCount, MaxCount>(current, last, flags, count);
+            }
+        }
+        // For other small ranges (2-3 chars), scalar implementation is faster
+        else if constexpr (range_size <= 3) {
             return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
         } else {
             // Use SIMD range comparison for larger ranges
@@ -364,7 +397,8 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_lower, _mm256_set1_epi8(1)), data_lower);
                     result = _mm256_and_si256(ge_min, le_max);
                 } else {
-                    // Case-sensitive range comparison
+                    // Case-sensitive range comparison - direct approach for ASCII ranges
+                    // For ASCII ranges (0-127), we can use direct comparison
                     __m256i ge_min = _mm256_cmpgt_epi8(data, _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1)));
                     __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_vec, _mm256_set1_epi8(1)), data);
                     result = _mm256_and_si256(ge_min, le_max);
@@ -423,8 +457,19 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         const bool case_insensitive =
             is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
 
-        // For very small ranges (≤3 chars), scalar implementation is faster
-        if constexpr (range_size <= 3) {
+        // For single character patterns, use optimized SIMD repetition
+        if constexpr (range_size == 1) {
+            // Use SIMD repetition for single character patterns
+            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+                return match_single_char_repeat_avx2<min_char, MinCount, MaxCount>(current, last, flags, count);
+            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+                return match_single_char_repeat_sse42<min_char, MinCount, MaxCount>(current, last, flags, count);
+            } else {
+                return match_single_char_repeat_scalar<min_char, MinCount, MaxCount>(current, last, flags, count);
+            }
+        }
+        // For other small ranges (2-3 chars), scalar implementation is faster
+        else if constexpr (range_size <= 3) {
             return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
         } else {
             // Use SIMD range comparison for larger ranges
@@ -447,7 +492,8 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
                     __m128i le_max = _mm_cmpgt_epi8(_mm_add_epi8(max_lower, _mm_set1_epi8(1)), data_lower);
                     result = _mm_and_si128(ge_min, le_max);
                 } else {
-                    // Case-sensitive range comparison
+                    // Case-sensitive range comparison - direct approach for ASCII ranges
+                    // For ASCII ranges (0-127), we can use direct comparison
                     __m128i ge_min = _mm_cmpgt_epi8(data, _mm_sub_epi8(min_vec, _mm_set1_epi8(1)));
                     __m128i le_max = _mm_cmpgt_epi8(_mm_add_epi8(max_vec, _mm_set1_epi8(1)), data);
                     result = _mm_and_si128(ge_min, le_max);
