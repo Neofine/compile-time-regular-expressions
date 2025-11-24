@@ -1,7 +1,7 @@
 .PHONY: default all clean grammar compare single-header single-header/ctre.hpp single-header/ctre-unicode.hpp single-header/unicode-db.hpp
 
 default: all
-	
+
 TARGETS := $(wildcard tests/benchmark-exec/*.cpp)
 IGNORE := $(wildcard tests/benchmark/*.cpp) $(wildcard tests/benchmark-exec/*.cpp)
 
@@ -15,7 +15,7 @@ PYTHON := python3.9
 PEDANTIC:=-pedantic
 
 override CXXFLAGS := $(CXXFLAGS) -std=c++$(CXX_STANDARD) -Iinclude -Isrell_include -O3 $(PEDANTIC) -Wall -Wextra -Werror -Wconversion -march=native -mtune=native -mavx2 -msse4.2 -mfma -mbmi2 -mlzcnt -mpopcnt -funroll-loops -ffast-math -flto
-LDFLAGS := -lstdc++ -flto 
+LDFLAGS := -lstdc++ -flto
 
 TESTS := $(wildcard tests/*.cpp) $(wildcard tests/benchmark/*.cpp)
 TRUE_TARGETS := $(TARGETS:%.cpp=%)
@@ -25,13 +25,13 @@ override OBJECTS := $(filter-out $(IGNORE:%.cpp=%.o),$(OBJECTS))
 DEPEDENCY_FILES := $(OBJECTS:%.o=%.d)
 
 all: $(TRUE_TARGETS) $(OBJECTS)
-	
+
 list:
 	echo $(SUPPORTED_CPP20)
-	
+
 $(TRUE_TARGETS): %: %.o
-	$(CXX)  $< $(LDFLAGS) -o $@ 
-	
+	$(CXX)  $< $(LDFLAGS) -o $@
+
 $(OBJECTS): %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
 
@@ -40,26 +40,26 @@ $(OBJECTS): %.o: %.cpp
 benchmark:
 	@$(MAKE) clean
 	@$(MAKE) IGNORE=""
-	
+
 benchmark-clean:
 	@$(MAKE) IGNORE="" clean
 
 clean:
 	rm -f $(TRUE_TARGETS) $(OBJECTS) $(DEPEDENCY_FILES) mtent12.txt mtent12.zip
-	
+
 grammar: include/ctre/pcre.hpp
-	
-regrammar: 
+
+regrammar:
 	@rm -f include/ctre/pcre.hpp
 	@$(MAKE) grammar
-	
+
 include/ctre/pcre.hpp: include/ctre/pcre.gram
 	@echo "LL1q $<"
 	@$(DESATOMAT) --ll --q --input=include/ctre/pcre.gram --output=include/ctre/ --generator=cpp_ctll_v2  --cfg:fname=pcre.hpp --cfg:namespace=ctre --cfg:guard=CTRE__PCRE__HPP --cfg:grammar_name=pcre
-	
+
 mtent12.zip:
 	curl -s http://www.gutenberg.org/files/3200/old/mtent12.zip -o mtent12.zip
-	
+
 mtent12.txt: mtent12.zip
 	unzip -o mtent12.zip
 	touch mtent12.txt
@@ -84,13 +84,40 @@ single-header/ctre-unicode.hpp:
 	echo "*/" >> single-header/ctre-unicode.hpp
 	cat ctre-unicode.hpp.tmp >> single-header/ctre-unicode.hpp
 	rm ctre-unicode.hpp.tmp
-	
+
 REPEAT:=10
 
 compare: mtent12.txt
 	$(CXX) $(CXXFLAGS) -MMD -march=native -DPATTERN="\"(${PATTERN})\"" -c tests/benchmark-range/measurement.cpp -o tests/benchmark-range/measurement.o
 	$(CXX) tests/benchmark-range/measurement.o -lboost_regex -lpcre2-8 -lre2 -o tests/benchmark-range/measurement
 	tests/benchmark-range/measurement all mtent12.txt ${REPEAT}
+
+# Phase 1: Glushkov NFA Construction (isolated development - safe!)
+test_glushkov: tests/test_glushkov
+	./tests/test_glushkov
+
+tests/test_glushkov: tests/test_glushkov.cpp
+	$(CXX) $(CXXFLAGS) -MMD -c tests/test_glushkov.cpp -o tests/test_glushkov.o
+	$(CXX) tests/test_glushkov.o -o tests/test_glushkov
+
+test_dominators: tests/test_dominators
+	./tests/test_dominators
+
+tests/test_dominators: tests/test_dominators.cpp tests/test_glushkov.cpp
+	$(CXX) $(CXXFLAGS) -MMD -c tests/test_dominators.cpp -o tests/test_dominators.o
+	$(CXX) tests/test_dominators.o -o tests/test_dominators
+
+test_fast_search: tests/test_fast_search
+	./tests/test_fast_search
+
+tests/test_fast_search: tests/test_fast_search.cpp
+	$(CXX) $(CXXFLAGS) -MMD tests/test_fast_search.cpp -o tests/test_fast_search
+
+benchmark_fast_search: tests/benchmark_fast_search
+	./tests/benchmark_fast_search
+
+tests/benchmark_fast_search: tests/benchmark_fast_search.cpp
+	$(CXX) $(CXXFLAGS) -MMD tests/benchmark_fast_search.cpp -o tests/benchmark_fast_search
 
 # Essential SIMD Tests - Clean and Focused
 simd_comprehensive_test: tests/comprehensive_simd_test

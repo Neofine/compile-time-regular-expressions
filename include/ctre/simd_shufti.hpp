@@ -626,12 +626,14 @@ inline bool match_char_class_shufti_avx2(Iterator& current, const EndIterator la
     if (current == last)
         return false;
 
-    const unsigned char* p = std::to_address(current);
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(current));
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
     const unsigned char* out;
 
     if (shufti_find_avx2(p, end, char_class, out)) {
-        current = Iterator(out);
+        // Use proper iterator conversion (same as simd_shift_or.hpp)
+        using char_type = typename std::iterator_traits<Iterator>::value_type;
+        current = Iterator(const_cast<char_type*>(reinterpret_cast<const char_type*>(out)));
         return true;
     }
 
@@ -646,12 +648,14 @@ inline bool match_char_class_shufti_ssse3(Iterator& current, const EndIterator l
     if (current == last)
         return false;
 
-    const unsigned char* p = std::to_address(current);
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(current));
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
     const unsigned char* out;
 
     if (shufti_find_ssse3(p, end, char_class, out)) {
-        current = Iterator(out);
+        // Use proper iterator conversion (same as simd_shift_or.hpp)
+        using char_type = typename std::iterator_traits<Iterator>::value_type;
+        current = Iterator(const_cast<char_type*>(reinterpret_cast<const char_type*>(out)));
         return true;
     }
 

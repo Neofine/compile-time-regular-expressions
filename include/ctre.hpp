@@ -6,5 +6,6 @@
 #include "ctre/iterators.hpp"
 #include "ctre/range.hpp"
 #include "ctre/operators.hpp"
+#include "ctre/fast_search.hpp"
 
 #endif

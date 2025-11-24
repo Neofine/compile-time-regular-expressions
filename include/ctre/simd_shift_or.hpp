@@ -17,6 +17,18 @@
 namespace ctre {
 namespace simd {
 
+// Forward declaration for verify_equal (used in prefilter functions)
+template <size_t N>
+HOT_ALWAYS_INLINE bool verify_equal(const unsigned char* s, const char* pat);
+
+// Helper: Convert unsigned char* back to iterator type
+template <typename It>
+HOT_ALWAYS_INLINE It uchar_to_iter(const unsigned char* p) {
+    // Need const_cast because the internal pointer is const but iterators may need non-const
+    using char_type = typename std::iterator_traits<It>::value_type;
+    return It(const_cast<char_type*>(reinterpret_cast<const char_type*>(p)));
+}
+
 constexpr size_t SHIFT_OR_THRESHOLD = 32;
 
 constexpr size_t MAX_SHIFT_OR_PATTERN_LENGTH = 64;
@@ -46,7 +58,7 @@ struct alignas(64) shift_or_state {
 
         // Set 0 bits for matching characters at each position (Shift-Or uses 0=good, 1=bad)
         for (size_t i = 0; i < PatternLength; ++i) {
-            char_masks[static_cast<unsigned char>(pattern[i])] &= ~(M(1) << i);
+            char_masks[static_cast<unsigned char>(pattern[i])] &= static_cast<M>(~(M(1) << i));
         }
     }
 
@@ -73,9 +85,9 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
         return false;
 
     using M = typename shift_or_state<PatternLength>::M;
-    const unsigned char* base = std::to_address(cur);
+    const unsigned char* base = reinterpret_cast<const unsigned char*>(std::to_address(cur));
     const unsigned char* p = base;
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
     const M* __restrict cm = st.char_masks.data();
 
     uint64_t D = ~0ull;
@@ -95,7 +107,7 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
         STEP(2);
         STEP(3);
         if (__builtin_expect(hits != 0, 0)) {
-            cur = It(p + __builtin_ctz(hits) + 1);
+            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
             return true;
         }
         STEP(4);
@@ -103,7 +115,7 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
         STEP(6);
         STEP(7);
         if (__builtin_expect(hits != 0, 0)) {
-            cur = It(p + __builtin_ctz(hits) + 1);
+            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
             return true;
         }
         STEP(8);
@@ -111,7 +123,7 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
         STEP(10);
         STEP(11);
         if (__builtin_expect(hits != 0, 0)) {
-            cur = It(p + __builtin_ctz(hits) + 1);
+            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
             return true;
         }
         STEP(12);
@@ -119,7 +131,7 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
         STEP(14);
         STEP(15);
         if (__builtin_expect(hits != 0, 0)) {
-            cur = It(p + __builtin_ctz(hits) + 1);
+            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
             return true;
         }
 
@@ -130,7 +142,7 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
     while (p < end) {
         D = (D << 1) | (uint64_t)cm[*p++];
         if (__builtin_expect(!(D & MSB), 0)) {
-            cur = It(p);
+            cur = uchar_to_iter<It>(p);
             return true;
         }
     }
@@ -144,9 +156,9 @@ inline bool match_shift_or_unrolled8(It& cur, const EndIt last, const shift_or_s
         return false;
 
     using M = typename shift_or_state<PatternLength>::M;
-    const unsigned char* base = std::to_address(cur);
+    const unsigned char* base = reinterpret_cast<const unsigned char*>(std::to_address(cur));
     const unsigned char* p = base;
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
     const M* __restrict cm = st.char_masks.data();
 
     uint64_t D = ~0ull;
@@ -166,7 +178,7 @@ inline bool match_shift_or_unrolled8(It& cur, const EndIt last, const shift_or_s
         STEP(2);
         STEP(3);
         if (__builtin_expect(hits != 0, 0)) {
-            cur = It(p + __builtin_ctz(hits) + 1);
+            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
             return true;
         }
         STEP(4);
@@ -174,7 +186,7 @@ inline bool match_shift_or_unrolled8(It& cur, const EndIt last, const shift_or_s
         STEP(6);
         STEP(7);
         if (__builtin_expect(hits != 0, 0)) {
-            cur = It(p + __builtin_ctz(hits) + 1);
+            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
             return true;
         }
 
@@ -185,7 +197,7 @@ inline bool match_shift_or_unrolled8(It& cur, const EndIt last, const shift_or_s
     while (p < end) {
         D = (D << 1) | (uint64_t)cm[*p++];
         if (__builtin_expect(!(D & MSB), 0)) {
-            cur = It(p);
+            cur = uchar_to_iter<It>(p);
             return true;
         }
     }
@@ -199,9 +211,9 @@ inline bool match_shift_or_scalar(It& cur, const EndIt last, const shift_or_stat
         return false;
 
     using M = typename shift_or_state<PatternLength>::M;
-    const unsigned char* base = std::to_address(cur);
+    const unsigned char* base = reinterpret_cast<const unsigned char*>(std::to_address(cur));
     const unsigned char* p = base;
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
     const M* __restrict cm = st.char_masks.data();
 
     uint64_t D = ~0ull;
@@ -210,7 +222,7 @@ inline bool match_shift_or_scalar(It& cur, const EndIt last, const shift_or_stat
     while (size_t(end - p) >= 4) {
         D = (D << 1) | (uint64_t)cm[p[0]];
         if (__builtin_expect(!(D & MSB), 0)) {
-            cur = It(p + 1);
+            cur = uchar_to_iter<It>(p + 1);
             return true;
         }
         D = (D << 1) | (uint64_t)cm[p[1]];
@@ -234,7 +246,7 @@ inline bool match_shift_or_scalar(It& cur, const EndIt last, const shift_or_stat
     while (p < end) {
         D = (D << 1) | (uint64_t)cm[*p++];
         if (__builtin_expect(!(D & MSB), 0)) {
-            cur = It(p);
+            cur = uchar_to_iter<It>(p);
             return true;
         }
     }
@@ -268,9 +280,9 @@ template <size_t N, typename It, typename EndIt>
 inline bool match_string_prefilter_2bytes_sse2(It& cur, EndIt last, const char* pat) {
     if (cur == last)
         return false;
-    const unsigned char* base = std::to_address(cur);
+    const unsigned char* base = reinterpret_cast<const unsigned char*>(std::to_address(cur));
     const unsigned char* p = base;
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
     const __m128i f = _mm_set1_epi8(static_cast<char>(pat[0]));
     const __m128i l = _mm_set1_epi8(static_cast<char>(pat[N - 1]));
 
@@ -285,7 +297,7 @@ inline bool match_string_prefilter_2bytes_sse2(It& cur, EndIt last, const char* 
         while (cand) {
             int i = __builtin_ctz(cand);
             if (verify_equal<N>(p + i, pat)) {
-                cur = It(p + i + N);
+                cur = uchar_to_iter<It>(p + i + N);
                 return true;
             }
             cand &= cand - 1;
@@ -298,7 +310,7 @@ inline bool match_string_prefilter_2bytes_sse2(It& cur, EndIt last, const char* 
         if (!hit)
             break;
         if (hit + N <= end && verify_equal<N>(hit, pat)) {
-            cur = It(hit + N);
+            cur = uchar_to_iter<It>(hit + N);
             return true;
         }
         p = hit + 1;
@@ -338,9 +350,9 @@ inline bool match_string_prefilter_2bytes(It& cur, EndIt last, const char* pat) 
         return false;
 
     constexpr int sh = int(N) - 1;
-    const unsigned char* base = std::to_address(cur);
+    const unsigned char* base = reinterpret_cast<const unsigned char*>(std::to_address(cur));
     const unsigned char* p = base;
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
 
     const __m256i f = _mm256_set1_epi8(pat[0]);
     const __m256i l = _mm256_set1_epi8(pat[sh]);
@@ -367,7 +379,7 @@ inline bool match_string_prefilter_2bytes(It& cur, EndIt last, const char* pat) 
             int i = __builtin_ctz(cand);
             const unsigned char* s = p + i;
             if (verify_equal<N>(s, pat)) {
-                cur = It(s + N);
+                cur = uchar_to_iter<It>(s + N);
                 return true;
             }
             cand &= cand - 1;
@@ -393,7 +405,7 @@ tail:
             int i = __builtin_ctz(cand);
             const unsigned char* s = p + i;
             if (verify_equal<N>(s, pat)) {
-                cur = It(s + N);
+                cur = uchar_to_iter<It>(s + N);
                 return true;
             }
             cand &= cand - 1;
@@ -406,7 +418,7 @@ tail:
         if (!hit)
             break;
         if (hit + N <= end && verify_equal<N>(hit, pat)) {
-            cur = It(hit + N);
+            cur = uchar_to_iter<It>(hit + N);
             return true;
         }
         p = hit + 1;
@@ -421,9 +433,9 @@ inline bool match_string_prefilter_2bytes(It& cur, EndIt last, const char* pat) 
     if (cur == last)
         return false;
 
-    const unsigned char* base = std::to_address(cur);
+    const unsigned char* base = reinterpret_cast<const unsigned char*>(std::to_address(cur));
     const unsigned char* p = base;
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
     const unsigned char target = static_cast<unsigned char>(pat[0]);
 
     while (p + 32 <= end) {
@@ -433,7 +445,7 @@ inline bool match_string_prefilter_2bytes(It& cur, EndIt last, const char* pat) 
 
         if (mask) {
             int i = __builtin_ctz(mask);
-            cur = It(p + i + 1);
+            cur = uchar_to_iter<It>(p + i + 1);
             return true;
         }
         p += 32;
@@ -441,7 +453,7 @@ inline bool match_string_prefilter_2bytes(It& cur, EndIt last, const char* pat) 
 
     p = static_cast<const unsigned char*>(std::memchr(p, target, end - p));
     if (p) {
-        cur = It(p + 1);
+        cur = uchar_to_iter<It>(p + 1);
         return true;
     }
 
@@ -452,7 +464,12 @@ template <size_t PatternLength, typename It, typename EndIt>
     requires std::contiguous_iterator<It> && std::same_as<std::remove_cvref_t<decltype(*std::declval<It>())>, char>
 inline bool match_string_vector_prefilter(It& cur, const EndIt last, const char* pattern) {
 #if CTRE_SIMD_ENABLED
-    if (get_simd_capability() >= SIMD_CAPABILITY_SSSE3) {
+    // Use AVX2 version if available (much faster!)
+    if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+        return match_string_prefilter_2bytes<PatternLength>(cur, last, pattern);
+    }
+    // Fall back to SSE2 version
+    else if (get_simd_capability() >= SIMD_CAPABILITY_SSSE3) {
         return match_string_prefilter_2bytes_sse2<PatternLength>(cur, last, pattern);
     }
 #endif
@@ -464,8 +481,8 @@ template <size_t K, typename It, typename EndIt>
 inline bool match_class_run_shufti(It& cur, EndIt last, const auto& cc) {
     if (cur == last)
         return false;
-    const unsigned char* p = std::to_address(cur);
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(cur));
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
 
     const __m256i upper_lut =
         _mm256_broadcastsi128_si256(_mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.upper_nibble_table.data())));
@@ -487,7 +504,7 @@ inline bool match_class_run_shufti(It& cur, EndIt last, const auto& cc) {
         }
         if (R) {
             int i = __builtin_ctz(R);
-            cur = It(p + i + K);
+            cur = uchar_to_iter<It>(p + i + K);
             return true;
         }
         p += 32 - (K - 1);
@@ -498,7 +515,7 @@ inline bool match_class_run_shufti(It& cur, EndIt last, const auto& cc) {
         for (size_t i = 0; i < K; ++i)
             ok &= (cc.exact_membership[p[i]] != 0);
         if (ok) {
-            cur = It(p + K);
+            cur = uchar_to_iter<It>(p + K);
             return true;
         }
         ++p;
@@ -569,8 +586,8 @@ inline bool match_multi_pattern_shift_or(It& current, const EndIt last,
         return false;
 
     using M = typename shift_or_state<MaxPatternLength>::M;
-    const unsigned char* p = std::to_address(current);
-    const unsigned char* end = std::to_address(last);
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(current));
+    const unsigned char* end = reinterpret_cast<const unsigned char*>(std::to_address(last));
 
     uint64_t D0 = ~0ull, D1 = ~0ull, D2 = ~0ull, D3 = ~0ull;
     const M* m0 = state.pattern_states[0].char_masks.data();
@@ -600,7 +617,7 @@ inline bool match_multi_pattern_shift_or(It& current, const EndIt last,
         const bool hit3 = NumPatterns > 3 && !(D3 & MSB3);
 
         if (hit0 || hit1 || hit2 || hit3) {
-            current = It(p);
+            current = uchar_to_iter<It>(p);
             return true;
         }
     }

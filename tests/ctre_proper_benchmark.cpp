@@ -351,11 +351,7 @@ int main() {
         {"[0-9]+_32", "[0-9]+", "Small range 0-9 plus (32 chars)"},
     };
 
-    std::cout << "CTRE Regex Performance Benchmark\n";
-    std::cout << "================================\n";
-    std::cout << std::left << std::setw(20) << "Regex Pattern" << std::setw(12) << "Time (ns)" << "\n";
-    std::cout << "----------------------------------------\n";
-
+    // Output CSV format: pattern,time
     for (const auto& test_case : test_cases) {
         // Extract string length from test case name
         size_t length = 32; // default
@@ -371,16 +367,12 @@ int main() {
         // Generate test string
         std::string test_string = generate_test_string(test_case.pattern, length);
 
-        // Benchmark with SIMD enabled (default)
-        double simd_time = benchmark_case(test_case.pattern, test_string, 100000);
+        // Benchmark
+        double time = benchmark_case(test_case.pattern, test_string, 100000);
 
-        // Output result in table format
-        std::cout << std::left << std::setw(20) << test_case.pattern << std::setw(12) << std::fixed
-                  << std::setprecision(2) << simd_time << "\n";
+        // Output CSV: pattern,time
+        std::cout << test_case.name << "," << std::fixed << std::setprecision(2) << time << "\n";
     }
-
-    std::cout << "----------------------------------------\n";
-    std::cout << "CTRE Regex benchmark completed!\n";
 
     return 0;
 }

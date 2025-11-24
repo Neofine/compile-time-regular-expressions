@@ -1,0 +1,1 @@
+#define PATTERN "ABCD|DEFGH|EFGHI|A{4,}"

@@ -7,6 +7,8 @@
 #include "return_type.hpp"
 #include "utf8.hpp"
 #include "utility.hpp"
+#include "decomposition.hpp"  // For automatic decomposition
+#include "simd_shift_or.hpp"  // For SIMD literal search
 #ifndef CTRE_IN_A_MODULE
 #include <string_view>
 #endif
@@ -79,11 +81,93 @@ struct match_method {
 };
 
 struct search_method {
-	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin orig_begin, IteratorBegin begin, IteratorEnd end, RE) noexcept {
+	// Helper: SIMD finder generator (same as fast_search.hpp)
+	template <auto Literal, size_t... Is>
+	static constexpr auto make_simd_finder(std::index_sequence<Is...>) noexcept {
+		return []<typename Iterator, typename EndIterator>(Iterator& it, EndIterator end) -> bool {
+			return simd::match_string_shift_or<Literal.chars[Is]...>(it, end, flags{});
+		};
+	}
+
+	// Helper: Naive literal search fallback
+	template <typename Iterator, typename EndIterator, size_t LitLength>
+	static constexpr bool find_literal_naive(Iterator& it, EndIterator end, const char (&literal)[LitLength]) noexcept {
+		if (it == end) return false;
+		const size_t len = LitLength - 1;
+		for (auto search_it = it; search_it != end; ++search_it) {
+			bool match = true;
+			auto check_it = search_it;
+			for (size_t i = 0; i < len && check_it != end; ++i, ++check_it) {
+				if (*check_it != literal[i]) {
+					match = false;
+					break;
+				}
+			}
+			if (match && std::distance(search_it, check_it) == static_cast<std::ptrdiff_t>(len)) {
+				it = search_it;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> 
+	constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin orig_begin, IteratorBegin begin, IteratorEnd end, RE) noexcept {
 		using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-		constexpr bool fixed = starts_with_anchor(Modifier{}, ctll::list<RE>{});
+		// PHASE 5: Automatic decomposition optimization
+		// Check if pattern has a useful literal for prefiltering
+		constexpr bool has_literal = decomposition::has_prefilter_literal<RE>;
+		
+		if constexpr (has_literal) {
+			constexpr auto literal = decomposition::prefilter_literal<RE>;
+			
+			// Only use decomposition if literal is long enough to be worth it
+			if constexpr (literal.length >= 2) {
+				// === FAST PATH: Use SIMD prefiltering ===
+				auto it = begin;
+				constexpr auto simd_finder = make_simd_finder<literal>(std::make_index_sequence<literal.length>{});
 
+				while (it != end) {
+					bool found;
+					if (std::is_constant_evaluated()) {
+						char lit_array[literal.length + 1];
+						for (size_t i = 0; i < literal.length; ++i) {
+							lit_array[i] = literal.chars[i];
+						}
+						lit_array[literal.length] = '\0';
+						found = find_literal_naive(it, end, lit_array);
+					} else {
+						found = simd_finder(it, end);
+						if (found && literal.length > 0) {
+							it = it - literal.length;
+						}
+					}
+
+					if (!found) break;
+
+					// Try regex from nearby positions
+					constexpr size_t max_lookback = 64;
+					auto search_start = (it > begin + max_lookback) ? (it - max_lookback) : begin;
+
+					for (auto try_pos = it; try_pos >= search_start; --try_pos) {
+						if (auto out = evaluate(orig_begin, try_pos, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>())) {
+							return out;
+						}
+						if (try_pos == search_start) break;
+					}
+
+					++it;
+				}
+
+				auto out = evaluate(orig_begin, end, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
+				if (!out) out.set_end_mark(end);
+				return out;
+			}
+		}
+
+		// === STANDARD PATH: Original search implementation ===
+		constexpr bool fixed = starts_with_anchor(Modifier{}, ctll::list<RE>{});
 		auto it = begin;
 
 		for (; end != it && !fixed; ++it) {
@@ -92,16 +176,13 @@ struct search_method {
 			}
 		}
 
-		// in case the RE is empty or fixed
 		auto out = evaluate(orig_begin, it, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
-
-		// ALERT: ugly hack
-		// propagate end even if it didn't match (this is needed for split function)
 		if (!out) out.set_end_mark(it);
 		return out;
 	}
 
-	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin begin, IteratorEnd end, RE) noexcept {
+	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> 
+	constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin begin, IteratorEnd end, RE) noexcept {
 		return exec<Modifier, ResultIterator>(begin, begin, end, RE{});
 	}
 };

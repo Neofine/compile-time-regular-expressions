@@ -32,7 +32,7 @@ std::string generate_test_string(size_t length, const std::string& type) {
     } else if (type == "digits") {
         std::uniform_int_distribution<> dis(0, 9);
         for (size_t i = 0; i < length; ++i) {
-            result += '0' + dis(gen);
+            result += static_cast<char>('0' + dis(gen));
         }
     } else if (type == "letters") {
         std::uniform_int_distribution<> dis(0, 51);
@@ -102,8 +102,9 @@ void benchmark_shufti_char_classes() {
 
     // Test patterns that should actually trigger SHUFTI (individual characters, not ranges)
     // This pattern has many individual characters and should trigger SHUFTI
+    // Note: Escaped brackets inside character class: \[ and \]
     auto complex_data = generate_test_string(STRING_LENGTH, "complex");
-    benchmark_function([&]() -> bool { return ctre::match<"[!@#$%^&*()_+-=[]{}|;':\",./<>?]">(complex_data); },
+    benchmark_function([&]() -> bool { return ctre::match<"[!@#$%^&*()_+\\-=\\[\\]{}|;':\",./<>?]">(complex_data); },
                        "complex_chars_32");
 
     // Test a pattern that definitely won't trigger SHUFTI (range)

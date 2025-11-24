@@ -312,101 +312,104 @@ std::string generate_test_string(const std::string& pattern, size_t length) {
 // Benchmark a single test case
 double benchmark_case(const std::string& pattern_str, const std::string& test_string, int iterations = 1000000) {
     // Warmup runs to ensure consistent timing
+    volatile int warmup_dummy = 0;
     for (int warmup = 0; warmup < 10000; ++warmup) {
         if (pattern_str == "A") {
-            ctre::match<"A">(test_string);
+            warmup_dummy += ctre::search<"A">(test_string) ? 1 : 0;
         } else if (pattern_str == "AB") {
-            ctre::match<"AB">(test_string);
+            warmup_dummy += ctre::search<"AB">(test_string) ? 1 : 0;
         } else if (pattern_str == "ABC") {
-            ctre::match<"ABC">(test_string);
+            warmup_dummy += ctre::search<"ABC">(test_string) ? 1 : 0;
         } else if (pattern_str == "ABCD") {
-            ctre::match<"ABCD">(test_string);
+            warmup_dummy += ctre::search<"ABCD">(test_string) ? 1 : 0;
         } else if (pattern_str == "ABCDE") {
-            ctre::match<"ABCDE">(test_string);
+            warmup_dummy += ctre::search<"ABCDE">(test_string) ? 1 : 0;
         } else if (pattern_str == "ABCDEF") {
-            ctre::match<"ABCDEF">(test_string);
+            warmup_dummy += ctre::search<"ABCDEF">(test_string) ? 1 : 0;
         } else if (pattern_str == "ABCDEFG") {
-            ctre::match<"ABCDEFG">(test_string);
+            warmup_dummy += ctre::search<"ABCDEFG">(test_string) ? 1 : 0;
         } else if (pattern_str == "ABCDEFGH") {
-            ctre::match<"ABCDEFGH">(test_string);
+            warmup_dummy += ctre::search<"ABCDEFGH">(test_string) ? 1 : 0;
         } else if (pattern_str == "CTRE") {
-            ctre::match<"CTRE">(test_string);
+            warmup_dummy += ctre::search<"CTRE">(test_string) ? 1 : 0;
         } else if (pattern_str == "REGX") {
-            ctre::match<"REGX">(test_string);
+            warmup_dummy += ctre::search<"REGX">(test_string) ? 1 : 0;
         } else if (pattern_str == "SCAN") {
-            ctre::match<"SCAN">(test_string);
+            warmup_dummy += ctre::search<"SCAN">(test_string) ? 1 : 0;
         } else if (pattern_str == "FIND") {
-            ctre::match<"FIND">(test_string);
+            warmup_dummy += ctre::search<"FIND">(test_string) ? 1 : 0;
         } else if (pattern_str == "HELLO") {
-            ctre::match<"HELLO">(test_string);
+            warmup_dummy += ctre::search<"HELLO">(test_string) ? 1 : 0;
         } else if (pattern_str == "WORLD") {
-            ctre::match<"WORLD">(test_string);
+            warmup_dummy += ctre::search<"WORLD">(test_string) ? 1 : 0;
         } else if (pattern_str == "TEST") {
-            ctre::match<"TEST">(test_string);
+            warmup_dummy += ctre::search<"TEST">(test_string) ? 1 : 0;
         } else if (pattern_str == "DATA") {
-            ctre::match<"DATA">(test_string);
+            warmup_dummy += ctre::search<"DATA">(test_string) ? 1 : 0;
         } else if (pattern_str == "CODE") {
-            ctre::match<"CODE">(test_string);
+            warmup_dummy += ctre::search<"CODE">(test_string) ? 1 : 0;
         } else if (pattern_str == "BENCH") {
-            ctre::match<"BENCH">(test_string);
+            warmup_dummy += ctre::search<"BENCH">(test_string) ? 1 : 0;
         } else if (pattern_str == "MARK") {
-            ctre::match<"MARK">(test_string);
+            warmup_dummy += ctre::search<"MARK">(test_string) ? 1 : 0;
         } else if (pattern_str == "FAST") {
-            ctre::match<"FAST">(test_string);
+            warmup_dummy += ctre::search<"FAST">(test_string) ? 1 : 0;
         }
     }
 
     // Run multiple timing samples and take the minimum for more reliable results
     double min_time = std::numeric_limits<double>::max();
 
+    volatile size_t total_matches = 0; // Prevent optimizer from eliminating code
+
     for (int sample = 0; sample < 5; ++sample) {
         auto start = std::chrono::high_resolution_clock::now();
         size_t matches = 0;
 
-        // Use appropriate pattern based on string
+        // Use appropriate pattern based on string - use search instead of match
         for (int i = 0; i < iterations; ++i) {
             bool matched = false;
 
             if (pattern_str == "A") {
-                matched = ctre::match<"A">(test_string);
+                matched = static_cast<bool>(ctre::search<"A">(test_string));
             } else if (pattern_str == "AB") {
-                matched = ctre::match<"AB">(test_string);
+                matched = static_cast<bool>(ctre::search<"AB">(test_string));
             } else if (pattern_str == "ABC") {
-                matched = ctre::match<"ABC">(test_string);
+                matched = static_cast<bool>(ctre::search<"ABC">(test_string));
             } else if (pattern_str == "ABCD") {
-                matched = ctre::match<"ABCD">(test_string);
+                matched = static_cast<bool>(ctre::search<"ABCD">(test_string));
             } else if (pattern_str == "ABCDE") {
-                matched = ctre::match<"ABCDE">(test_string);
+                matched = static_cast<bool>(ctre::search<"ABCDE">(test_string));
             } else if (pattern_str == "ABCDEF") {
-                matched = ctre::match<"ABCDEF">(test_string);
+                matched = static_cast<bool>(ctre::search<"ABCDEF">(test_string));
             } else if (pattern_str == "ABCDEFG") {
-                matched = ctre::match<"ABCDEFG">(test_string);
+                matched = static_cast<bool>(ctre::search<"ABCDEFG">(test_string));
             } else if (pattern_str == "ABCDEFGH") {
-                matched = ctre::match<"ABCDEFGH">(test_string);
+                matched = static_cast<bool>(ctre::search<"ABCDEFGH">(test_string));
             } else if (pattern_str == "CTRE") {
-                matched = ctre::match<"CTRE">(test_string);
+                matched = static_cast<bool>(ctre::search<"CTRE">(test_string));
             } else if (pattern_str == "REGX") {
-                matched = ctre::match<"REGX">(test_string);
+                matched = static_cast<bool>(ctre::search<"REGX">(test_string));
             } else if (pattern_str == "SCAN") {
-                matched = ctre::match<"SCAN">(test_string);
+                matched = static_cast<bool>(ctre::search<"SCAN">(test_string));
             } else if (pattern_str == "FIND") {
-                matched = ctre::match<"FIND">(test_string);
+                matched = static_cast<bool>(ctre::search<"FIND">(test_string));
             } else if (pattern_str == "HELLO") {
-                matched = ctre::match<"HELLO">(test_string);
+                matched = static_cast<bool>(ctre::search<"HELLO">(test_string));
             } else if (pattern_str == "WORLD") {
-                matched = ctre::match<"WORLD">(test_string);
+                matched = static_cast<bool>(ctre::search<"WORLD">(test_string));
             } else if (pattern_str == "TEST") {
-                matched = ctre::match<"TEST">(test_string);
+                matched = static_cast<bool>(ctre::search<"TEST">(test_string));
             } else if (pattern_str == "DATA") {
-                matched = ctre::match<"DATA">(test_string);
+                matched = static_cast<bool>(ctre::search<"DATA">(test_string));
             } else if (pattern_str == "CODE") {
-                matched = ctre::match<"CODE">(test_string);
+                matched = static_cast<bool>(ctre::search<"CODE">(test_string));
             } else if (pattern_str == "BENCH") {
-                matched = ctre::match<"BENCH">(test_string);
+                matched = static_cast<bool>(ctre::search<"BENCH">(test_string));
             } else if (pattern_str == "MARK") {
-                matched = ctre::match<"MARK">(test_string);
+                matched = static_cast<bool>(ctre::search<"MARK">(test_string));
             } else if (pattern_str == "FAST") {
-                matched = ctre::match<"FAST">(test_string);
+                matched = static_cast<bool>(ctre::search<"FAST">(test_string));
             }
 
             if (matched) {
@@ -416,10 +419,12 @@ double benchmark_case(const std::string& pattern_str, const std::string& test_st
 
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-        double time_per_match = static_cast<double>(duration.count()) / static_cast<double>(matches);
+        double time_per_iter = static_cast<double>(duration.count()) / static_cast<double>(iterations);
 
-        if (time_per_match < min_time) {
-            min_time = time_per_match;
+        total_matches += matches; // Use volatile variable
+
+        if (time_per_iter < min_time) {
+            min_time = time_per_iter;
         }
     }
 
