@@ -6,21 +6,135 @@
 
 #include "glushkov_nfa.hpp"
 #include "dominator_analysis.hpp"
+#include "region_analysis.hpp"
+#include "literal_extraction_simple_multi.hpp"
 
 namespace ctre {
+// Forward declaration for unwrapper
+template <typename RE, typename Method, typename Modifier> struct regular_expression;
+
 namespace decomposition {
+
+// =============================================================================
+// Helper: Extract raw AST from regular_expression wrapper
+// =============================================================================
+
+// Unwrap captures (CTRE adds implicit captures around parentheses)
+template <typename T>
+struct unwrap_capture {
+    using type = T;
+};
+
+template <size_t Index, typename... Content>
+struct unwrap_capture<ctre::capture<Index, Content...>> {
+    using type = ctre::sequence<Content...>; // Extract the content
+};
+
+// Single content - no need for sequence
+template <size_t Index, typename Content>
+struct unwrap_capture<ctre::capture<Index, Content>> {
+    using type = Content;
+};
+
+template <typename T>
+using unwrap_capture_t = typename unwrap_capture<T>::type;
+
+// Unwrap regular_expression wrapper using helper functions
+// This avoids partial specialization issues with forward declarations
+
+// Helper function to extract RE from regular_expression
+template <typename RE, typename Method, typename Modifier>
+constexpr auto unwrap_regex_impl(const ctre::regular_expression<RE, Method, Modifier>*) -> unwrap_capture_t<RE>;
+
+// Default: return as-is
+template <typename T>
+constexpr auto unwrap_regex_impl(const T*) -> T;
+
+// Wrapper to use the function-based approach
+template <typename T>
+using unwrap_regex_t = decltype(unwrap_regex_impl(static_cast<T*>(nullptr)));
 
 // =============================================================================
 // Public API: Pattern Analysis
 // =============================================================================
 
+// Extract literal with character-set expansion and fallback
+template <typename Pattern>
+inline constexpr auto extract_literal_with_expansion_and_fallback() -> dominators::literal_result<64> {
+    using RawAST = unwrap_regex_t<Pattern>;
+
+    // Always compute NFA-based result for comparison
+    constexpr auto nfa = glushkov::glushkov_nfa<RawAST>();
+    constexpr auto nfa_result = dominators::extract_literal_from_dominators(nfa);
+
+    // Step 0: Try AST-based extraction with character-set expansion
+    constexpr auto multi_result = extraction::extract_literals_simple_multi<RawAST>();
+    if constexpr (multi_result.has_literals && multi_result.count > 0) {
+        constexpr auto longest = multi_result.get_longest();
+
+        // BUG FIX #25: Always prefer the longest expansion literal for SIMD prefiltering!
+        // Even if expansion creates multiple variants (e.g., [0-3]test → "0test", "1test", ...),
+        // the longest literal (5 chars) is MORE selective for SIMD than the common substring (4 chars).
+        //
+        // Example: [0-3]test
+        //   - Expansion: "0test" (5 chars, 1/4 coverage but very selective)
+        //   - NFA: "test" (4 chars, 100% coverage but less selective, more false positives)
+        //   - Prefer "0test"! It filters out "test", "atest", "btest", etc.
+        //
+        // Previous "BUG FIX #18" incorrectly preferred NFA literals when they were within
+        // 1 character of the expansion length, which defeated the purpose of char expansion.
+        // The Hyperscan paper explicitly recommends using the longest literal from expansion.
+
+        // Use expansion result
+        dominators::literal_result<64> result{};
+        result.has_literal = longest.has_literal;
+        result.length = longest.length;
+        result.start_position = longest.start_position;
+        result.nfa_dominator_length = nfa_result.has_literal ? nfa_result.length : 0;  // Store NFA length for validation
+        for (size_t i = 0; i < longest.length; ++i) {
+            result.chars[i] = longest.chars[i];
+        }
+        return result;
+    }
+
+    // Step 1: Use NFA-based result if available
+    if constexpr (nfa_result.has_literal) {
+        dominators::literal_result<64> result = nfa_result;
+        result.nfa_dominator_length = nfa_result.length;  // Same as literal length (not from expansion)
+        return result;
+    }
+
+    // Step 2: Fallback to dominant region analysis
+    return region::extract_literal_from_regions(nfa);
+}
+
+// Extract literal with fallback to region analysis (original version, no expansion)
+template <typename Pattern>
+inline auto extract_literal_with_fallback() {
+    using RawAST = unwrap_regex_t<Pattern>;
+    constexpr auto nfa = glushkov::glushkov_nfa<RawAST>();
+
+    // Step 1: Try dominant path analysis (fast, covers 97%+)
+    constexpr auto path_result = dominators::extract_literal_from_dominators(nfa);
+    if constexpr (path_result.has_literal) {
+        return path_result;  // Path analysis succeeded!
+    }
+
+    // Step 2: Fallback to dominant region analysis (covers remaining 2-3%)
+    return region::extract_literal_from_regions(nfa);
+}
+
 // Check if a pattern has an extractable prefilter literal
 template <typename Pattern>
-inline constexpr bool has_prefilter_literal = dominators::has_extractable_literal<Pattern>();
+inline constexpr bool has_prefilter_literal = dominators::has_extractable_literal<unwrap_regex_t<Pattern>>();
 
-// Extract the prefilter literal from a pattern
+// Extract the prefilter literal from a pattern (path only for now)
 template <typename Pattern>
-inline constexpr auto prefilter_literal = dominators::extract_literal<Pattern>();
+inline constexpr auto prefilter_literal = dominators::extract_literal<unwrap_regex_t<Pattern>>();
+
+// Extract with region fallback (runtime, not constexpr)
+template <typename Pattern>
+inline auto prefilter_literal_with_fallback = extract_literal_with_fallback<unwrap_regex_t<Pattern>>();
 
 // Get the Glushkov NFA for a pattern (for advanced use)
 template <typename Pattern>

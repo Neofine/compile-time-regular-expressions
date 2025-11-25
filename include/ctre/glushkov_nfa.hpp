@@ -5,11 +5,11 @@
 // Converts CTRE's type-based regex AST into position-based NFA
 // Used for literal extraction and pattern decomposition
 
-#include "ctll.hpp"
 #include "atoms.hpp"
 #include "atoms_characters.hpp"
-#include <cstddef>
+#include "ctll.hpp"
 #include <array>
+#include <cstddef>
 #include <utility>
 
 namespace ctre {
@@ -65,9 +65,7 @@ struct is_possessive_repeat<possessive_repeat<A, B, Content...>> : std::true_typ
 
 // Check if type is any repeat type
 template <typename T>
-constexpr bool is_any_repeat_v = is_repeat<T>::value ||
-                                  is_lazy_repeat<T>::value ||
-                                  is_possessive_repeat<T>::value;
+constexpr bool is_any_repeat_v = is_repeat<T>::value || is_lazy_repeat<T>::value || is_possessive_repeat<T>::value;
 
 // Check if type is ctre::character<>
 template <typename T>
@@ -89,6 +87,13 @@ struct is_empty : std::false_type {};
 
 template <>
 struct is_empty<empty> : std::true_type {};
+
+// Check if type is ctre::capture<>
+template <typename T>
+struct is_capture : std::false_type {};
+
+template <size_t Index, typename... Content>
+struct is_capture<capture<Index, Content...>> : std::true_type {};
 
 // Check if type is character-like (has match_char method)
 template <typename T>
@@ -149,19 +154,23 @@ constexpr size_t count_positions() {
             return count_positions_pack<Options...>();
         }(static_cast<Pattern*>(nullptr));
     }
+    // Capture: transparent (same as content)
+    else if constexpr (is_capture<Pattern>::value) {
+        return []<size_t Index, typename... Content>(capture<Index, Content...>*) {
+            return count_positions_pack<Content...>();
+        }(static_cast<Pattern*>(nullptr));
+    }
     // Repeat: same as inner content (positions don't multiply!)
     else if constexpr (is_any_repeat_v<Pattern>) {
         if constexpr (is_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(repeat<A, B, Content...>*) {
                 return count_positions_pack<Content...>();
             }(static_cast<Pattern*>(nullptr));
-        }
-        else if constexpr (is_lazy_repeat<Pattern>::value) {
+        } else if constexpr (is_lazy_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*) {
                 return count_positions_pack<Content...>();
             }(static_cast<Pattern*>(nullptr));
-        }
-        else if constexpr (is_possessive_repeat<Pattern>::value) {
+        } else if constexpr (is_possessive_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(possessive_repeat<A, B, Content...>*) {
                 return count_positions_pack<Content...>();
             }(static_cast<Pattern*>(nullptr));
@@ -198,7 +207,7 @@ constexpr bool nullable();
 template <typename... Patterns>
 constexpr bool all_nullable() {
     if constexpr (sizeof...(Patterns) == 0) {
-        return true;  // Empty pack is nullable
+        return true; // Empty pack is nullable
     } else {
         return (nullable<Patterns>() && ...);
     }
@@ -245,6 +254,12 @@ constexpr bool nullable() {
             return any_nullable<Options...>();
         }(static_cast<Pattern*>(nullptr));
     }
+    // Capture: transparent (check content)
+    else if constexpr (is_capture<Pattern>::value) {
+        return []<size_t Index, typename... Content>(capture<Index, Content...>*) {
+            return all_nullable<Content...>();
+        }(static_cast<Pattern*>(nullptr));
+    }
     // Repeat: check minimum count
     else if constexpr (is_any_repeat_v<Pattern>) {
         if constexpr (is_repeat<Pattern>::value) {
@@ -256,8 +271,7 @@ constexpr bool nullable() {
                     return all_nullable<Content...>();
                 }
             }(static_cast<Pattern*>(nullptr));
-        }
-        else if constexpr (is_lazy_repeat<Pattern>::value) {
+        } else if constexpr (is_lazy_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*) {
                 if constexpr (A == 0) {
                     return true;
@@ -265,8 +279,7 @@ constexpr bool nullable() {
                     return all_nullable<Content...>();
                 }
             }(static_cast<Pattern*>(nullptr));
-        }
-        else if constexpr (is_possessive_repeat<Pattern>::value) {
+        } else if constexpr (is_possessive_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(possessive_repeat<A, B, Content...>*) {
                 if constexpr (A == 0) {
                     return true;
@@ -357,14 +370,18 @@ constexpr auto first_positions(size_t offset) {
     }
     // Sequence: first(e1) ∪ (first(e2) if nullable(e1))
     else if constexpr (is_sequence<Pattern>::value) {
-        return []<typename... Content>(sequence<Content...>*, size_t off) {
-            return first_sequence<Content...>(off);
-        }(static_cast<Pattern*>(nullptr), offset);
+        return []<typename... Content>(sequence<Content...>*, size_t off) { return first_sequence<Content...>(off); }(
+                   static_cast<Pattern*>(nullptr), offset);
     }
     // Select: union of all branches
     else if constexpr (is_select<Pattern>::value) {
-        return []<typename... Options>(select<Options...>*, size_t off) {
-            return first_select<Options...>(off);
+        return []<typename... Options>(select<Options...>*, size_t off) { return first_select<Options...>(off); }(
+                   static_cast<Pattern*>(nullptr), offset);
+    }
+    // Capture: transparent (first of content)
+    else if constexpr (is_capture<Pattern>::value) {
+        return []<size_t Index, typename... Content>(capture<Index, Content...>*, size_t off) {
+            return first_pack<Content...>(off);
         }(static_cast<Pattern*>(nullptr), offset);
     }
     // Repeat: first(content)
@@ -373,13 +390,11 @@ constexpr auto first_positions(size_t offset) {
             return []<size_t A, size_t B, typename... Content>(repeat<A, B, Content...>*, size_t off) {
                 return first_pack<Content...>(off);
             }(static_cast<Pattern*>(nullptr), offset);
-        }
-        else if constexpr (is_lazy_repeat<Pattern>::value) {
+        } else if constexpr (is_lazy_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*, size_t off) {
                 return first_pack<Content...>(off);
             }(static_cast<Pattern*>(nullptr), offset);
-        }
-        else if constexpr (is_possessive_repeat<Pattern>::value) {
+        } else if constexpr (is_possessive_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(possessive_repeat<A, B, Content...>*, size_t off) {
                 return first_pack<Content...>(off);
             }(static_cast<Pattern*>(nullptr), offset);
@@ -401,9 +416,7 @@ constexpr auto first_pack(size_t offset) {
     if constexpr (sizeof...(Content) == 0) {
         return std::pair{std::array<size_t, 1>{}, size_t{0}};
     } else if constexpr (sizeof...(Content) == 1) {
-        return []<typename T>(size_t off) {
-            return first_positions<T>(off);
-        }.template operator()<Content...>(offset);
+        return []<typename T>(size_t off) { return first_positions<T>(off); }.template operator()<Content...>(offset);
     } else {
         // Multiple content items: treat as sequence
         return first_sequence<Content...>(offset);
@@ -416,9 +429,7 @@ constexpr auto first_sequence(size_t offset) {
     if constexpr (sizeof...(Content) == 0) {
         return std::pair{std::array<size_t, 1>{}, size_t{0}};
     } else if constexpr (sizeof...(Content) == 1) {
-        return []<typename T>(size_t off) {
-            return first_positions<T>(off);
-        }.template operator()<Content...>(offset);
+        return []<typename T>(size_t off) { return first_positions<T>(off); }.template operator()<Content...>(offset);
     } else {
         return []<typename Head, typename... Tail>(size_t off) {
             auto [head_first, head_count] = first_positions<Head>(off);
@@ -442,9 +453,7 @@ constexpr auto first_select(size_t offset) {
     if constexpr (sizeof...(Options) == 0) {
         return std::pair{std::array<size_t, 1>{}, size_t{0}};
     } else if constexpr (sizeof...(Options) == 1) {
-        return []<typename T>(size_t off) {
-            return first_positions<T>(off);
-        }.template operator()<Options...>(offset);
+        return []<typename T>(size_t off) { return first_positions<T>(off); }.template operator()<Options...>(offset);
     } else {
         return []<typename Head, typename... Tail>(size_t off) {
             auto [head_first, head_count] = first_positions<Head>(off);
@@ -511,14 +520,18 @@ constexpr auto last_positions(size_t offset) {
     }
     // Sequence: last(e2) ∪ (last(e1) if nullable(e2))
     else if constexpr (is_sequence<Pattern>::value) {
-        return []<typename... Content>(sequence<Content...>*, size_t off) {
-            return last_sequence<Content...>(off);
-        }(static_cast<Pattern*>(nullptr), offset);
+        return []<typename... Content>(sequence<Content...>*, size_t off) { return last_sequence<Content...>(off); }(
+                   static_cast<Pattern*>(nullptr), offset);
     }
     // Select: union of all branches
     else if constexpr (is_select<Pattern>::value) {
-        return []<typename... Options>(select<Options...>*, size_t off) {
-            return last_select<Options...>(off);
+        return []<typename... Options>(select<Options...>*, size_t off) { return last_select<Options...>(off); }(
+                   static_cast<Pattern*>(nullptr), offset);
+    }
+    // Capture: transparent (last of content)
+    else if constexpr (is_capture<Pattern>::value) {
+        return []<size_t Index, typename... Content>(capture<Index, Content...>*, size_t off) {
+            return last_pack<Content...>(off);
         }(static_cast<Pattern*>(nullptr), offset);
     }
     // Repeat: last(content)
@@ -527,13 +540,11 @@ constexpr auto last_positions(size_t offset) {
             return []<size_t A, size_t B, typename... Content>(repeat<A, B, Content...>*, size_t off) {
                 return last_pack<Content...>(off);
             }(static_cast<Pattern*>(nullptr), offset);
-        }
-        else if constexpr (is_lazy_repeat<Pattern>::value) {
+        } else if constexpr (is_lazy_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*, size_t off) {
                 return last_pack<Content...>(off);
             }(static_cast<Pattern*>(nullptr), offset);
-        }
-        else if constexpr (is_possessive_repeat<Pattern>::value) {
+        } else if constexpr (is_possessive_repeat<Pattern>::value) {
             return []<size_t A, size_t B, typename... Content>(possessive_repeat<A, B, Content...>*, size_t off) {
                 return last_pack<Content...>(off);
             }(static_cast<Pattern*>(nullptr), offset);
@@ -555,9 +566,7 @@ constexpr auto last_pack(size_t offset) {
     if constexpr (sizeof...(Content) == 0) {
         return std::pair{std::array<size_t, 1>{}, size_t{0}};
     } else if constexpr (sizeof...(Content) == 1) {
-        return []<typename T>(size_t off) {
-            return last_positions<T>(off);
-        }.template operator()<Content...>(offset);
+        return []<typename T>(size_t off) { return last_positions<T>(off); }.template operator()<Content...>(offset);
     } else {
         // Multiple content items: treat as sequence
         return last_sequence<Content...>(offset);
@@ -570,9 +579,7 @@ constexpr auto last_sequence(size_t offset) {
     if constexpr (sizeof...(Content) == 0) {
         return std::pair{std::array<size_t, 1>{}, size_t{0}};
     } else if constexpr (sizeof...(Content) == 1) {
-        return []<typename T>(size_t off) {
-            return last_positions<T>(off);
-        }.template operator()<Content...>(offset);
+        return []<typename T>(size_t off) { return last_positions<T>(off); }.template operator()<Content...>(offset);
     } else {
         // Process sequence in REVERSE: last element first
         return []<typename... All>(size_t off) {
@@ -612,9 +619,7 @@ constexpr auto last_select(size_t offset) {
     if constexpr (sizeof...(Options) == 0) {
         return std::pair{std::array<size_t, 1>{}, size_t{0}};
     } else if constexpr (sizeof...(Options) == 1) {
-        return []<typename T>(size_t off) {
-            return last_positions<T>(off);
-        }.template operator()<Options...>(offset);
+        return []<typename T>(size_t off) { return last_positions<T>(off); }.template operator()<Options...>(offset);
     } else {
         return []<typename Head, typename... Tail>(size_t off) {
             auto [head_last, head_count] = last_positions<Head>(off);
@@ -676,7 +681,7 @@ constexpr void build_follow_sequence(follow_map<MaxPositions>& fmap, size_t offs
 template <typename... Options, size_t MaxPositions>
 constexpr void build_follow_select(follow_map<MaxPositions>& fmap, size_t offset);
 
-template <typename... Content, size_t MaxPositions>
+template <size_t A, size_t B, typename... Content, size_t MaxPositions>
 constexpr void build_follow_repeat(follow_map<MaxPositions>& fmap, size_t offset);
 
 // Main follow builder
@@ -721,24 +726,31 @@ constexpr void build_follow(follow_map<MaxPositions>& fmap, size_t offset) {
             build_follow_select<Options...>(fm, off);
         }(static_cast<Pattern*>(nullptr), fmap, offset);
     }
+    // Capture: transparent (build follow for content)
+    else if constexpr (is_capture<Pattern>::value) {
+        []<size_t Index, typename... Content>(capture<Index, Content...>*, follow_map<MaxPositions>& fm, size_t off) {
+            // Treat as sequence of content
+            if constexpr (sizeof...(Content) == 1) {
+                (build_follow<Content>(fm, off), ...);
+            } else {
+                build_follow_sequence<Content...>(fm, off);
+            }
+        }(static_cast<Pattern*>(nullptr), fmap, offset);
+    }
     // Repeat: internal + loop back!
     else if constexpr (is_any_repeat_v<Pattern>) {
         if constexpr (is_repeat<Pattern>::value) {
-            []<size_t A, size_t B, typename... Content>(repeat<A, B, Content...>*,
-                                                         follow_map<MaxPositions>& fm, size_t off) {
-                build_follow_repeat<Content...>(fm, off);
-            }(static_cast<Pattern*>(nullptr), fmap, offset);
-        }
-        else if constexpr (is_lazy_repeat<Pattern>::value) {
-            []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*,
-                                                         follow_map<MaxPositions>& fm, size_t off) {
-                build_follow_repeat<Content...>(fm, off);
-            }(static_cast<Pattern*>(nullptr), fmap, offset);
-        }
-        else if constexpr (is_possessive_repeat<Pattern>::value) {
+            []<size_t A, size_t B, typename... Content>(repeat<A, B, Content...>*, follow_map<MaxPositions>& fm,
+                                                        size_t off) { build_follow_repeat<A, B, Content...>(fm, off); }(
+                static_cast<Pattern*>(nullptr), fmap, offset);
+        } else if constexpr (is_lazy_repeat<Pattern>::value) {
+            []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*, follow_map<MaxPositions>& fm,
+                                                        size_t off) { build_follow_repeat<A, B, Content...>(fm, off); }(
+                static_cast<Pattern*>(nullptr), fmap, offset);
+        } else if constexpr (is_possessive_repeat<Pattern>::value) {
             []<size_t A, size_t B, typename... Content>(possessive_repeat<A, B, Content...>*,
-                                                         follow_map<MaxPositions>& fm, size_t off) {
-                build_follow_repeat<Content...>(fm, off);
+                                                        follow_map<MaxPositions>& fm, size_t off) {
+                build_follow_repeat<A, B, Content...>(fm, off);
             }(static_cast<Pattern*>(nullptr), fmap, offset);
         }
     }
@@ -765,11 +777,12 @@ constexpr void build_follow_sequence(follow_map<MaxPositions>& fmap, size_t offs
             // Get last positions of head
             auto [head_last, head_last_count] = last_positions<Head>(off);
 
-            // Get first positions of tail (next component)
+            // Get first positions of ENTIRE tail (accounts for nullability!)
+            // first_pack() will recursively include positions from nullable elements
             size_t tail_offset = off + count_positions<Head>();
-            auto [tail_first, tail_first_count] = first_positions<typename std::tuple_element<0, std::tuple<Tail...>>::type>(tail_offset);
+            auto [tail_first, tail_first_count] = first_pack<Tail...>(tail_offset);
 
-            // Connect: last(head) → first(next)
+            // Connect: last(head) → first(tail)
             for (size_t i = 0; i < head_last_count; ++i) {
                 fm.add_edges(head_last[i], tail_first, tail_first_count);
             }
@@ -800,7 +813,7 @@ constexpr void build_follow_select(follow_map<MaxPositions>& fmap, size_t offset
 }
 
 // Helper: build follow for repeat (CREATES LOOPS!)
-template <typename... Content, size_t MaxPositions>
+template <size_t A, size_t B, typename... Content, size_t MaxPositions>
 constexpr void build_follow_repeat(follow_map<MaxPositions>& fmap, size_t offset) {
     if constexpr (sizeof...(Content) == 0) {
         return;
@@ -810,11 +823,15 @@ constexpr void build_follow_repeat(follow_map<MaxPositions>& fmap, size_t offset
             build_follow<T>(fm, off);
 
             // KEY: Add loop back! last(e) → first(e)
-            auto [content_first, first_count] = first_positions<T>(off);
-            auto [content_last, last_count] = last_positions<T>(off);
+            // BUT: Only if max repetitions is not 1 (i.e., not for '?' quantifier)
+            // B == 1 means "at most 1", so no loop needed
+            if constexpr (B != 1) {
+                auto [content_first, first_count] = first_positions<T>(off);
+                auto [content_last, last_count] = last_positions<T>(off);
 
-            for (size_t i = 0; i < last_count; ++i) {
-                fm.add_edges(content_last[i], content_first, first_count);
+                for (size_t i = 0; i < last_count; ++i) {
+                    fm.add_edges(content_last[i], content_first, first_count);
+                }
             }
         }.template operator()<Content...>(fmap, offset);
     } else {
@@ -823,12 +840,14 @@ constexpr void build_follow_repeat(follow_map<MaxPositions>& fmap, size_t offset
             // Build sequence follows
             build_follow_sequence<All...>(fm, off);
 
-            // Add loop back
-            auto [content_first, first_count] = first_pack<All...>(off);
-            auto [content_last, last_count] = last_pack<All...>(off);
+            // Add loop back (only if not '?' quantifier)
+            if constexpr (B != 1) {
+                auto [content_first, first_count] = first_pack<All...>(off);
+                auto [content_last, last_count] = last_pack<All...>(off);
 
-            for (size_t i = 0; i < last_count; ++i) {
-                fm.add_edges(content_last[i], content_first, first_count);
+                for (size_t i = 0; i < last_count; ++i) {
+                    fm.add_edges(content_last[i], content_first, first_count);
+                }
             }
         }.template operator()<Content...>(fmap, offset);
     }
@@ -853,63 +872,53 @@ template <typename Pattern>
 constexpr void assign_symbols(std::array<char, 512>& symbols, size_t offset) {
     if constexpr (is_empty<Pattern>::value) {
         // No symbols
-    }
-    else if constexpr (is_character<Pattern>::value) {
-        []<auto C>(character<C>*, std::array<char, 512>& syms, size_t off) {
-            syms[off + 1] = static_cast<char>(C);
-        }(static_cast<Pattern*>(nullptr), symbols, offset);
-    }
-    else if constexpr (is_any<Pattern>::value) {
-        symbols[offset + 1] = '.';  // Represent any as '.'
-    }
-    else if constexpr (is_string<Pattern>::value) {
+    } else if constexpr (is_character<Pattern>::value) {
+        []<auto C>(character<C>*, std::array<char, 512>& syms, size_t off) { syms[off + 1] = static_cast<char>(C); }(
+            static_cast<Pattern*>(nullptr), symbols, offset);
+    } else if constexpr (is_any<Pattern>::value) {
+        symbols[offset + 1] = '.'; // Represent any as '.'
+    } else if constexpr (is_string<Pattern>::value) {
         []<auto... Cs>(string<Cs...>*, std::array<char, 512>& syms, size_t off) {
             size_t pos = 1;
             ((syms[off + pos++] = static_cast<char>(Cs)), ...);
         }(static_cast<Pattern*>(nullptr), symbols, offset);
-    }
-    else if constexpr (is_sequence<Pattern>::value) {
+    } else if constexpr (is_sequence<Pattern>::value) {
         []<typename... Content>(sequence<Content...>*, std::array<char, 512>& syms, size_t off) {
             size_t current_offset = off;
-            ((assign_symbols<Content>(syms, current_offset),
-              current_offset += count_positions<Content>()), ...);
+            ((assign_symbols<Content>(syms, current_offset), current_offset += count_positions<Content>()), ...);
         }(static_cast<Pattern*>(nullptr), symbols, offset);
-    }
-    else if constexpr (is_select<Pattern>::value) {
+    } else if constexpr (is_select<Pattern>::value) {
         []<typename... Options>(select<Options...>*, std::array<char, 512>& syms, size_t off) {
             size_t current_offset = off;
-            ((assign_symbols<Options>(syms, current_offset),
-              current_offset += count_positions<Options>()), ...);
+            ((assign_symbols<Options>(syms, current_offset), current_offset += count_positions<Options>()), ...);
         }(static_cast<Pattern*>(nullptr), symbols, offset);
-    }
-    else if constexpr (is_any_repeat_v<Pattern>) {
+    } else if constexpr (is_capture<Pattern>::value) {
+        []<size_t Index, typename... Content>(capture<Index, Content...>*, std::array<char, 512>& syms, size_t off) {
+            size_t current_offset = off;
+            ((assign_symbols<Content>(syms, current_offset), current_offset += count_positions<Content>()), ...);
+        }(static_cast<Pattern*>(nullptr), symbols, offset);
+    } else if constexpr (is_any_repeat_v<Pattern>) {
         if constexpr (is_repeat<Pattern>::value) {
-            []<size_t A, size_t B, typename... Content>(repeat<A, B, Content...>*,
-                                                         std::array<char, 512>& syms, size_t off) {
+            []<size_t A, size_t B, typename... Content>(repeat<A, B, Content...>*, std::array<char, 512>& syms,
+                                                        size_t off) {
                 size_t current_offset = off;
-                ((assign_symbols<Content>(syms, current_offset),
-                  current_offset += count_positions<Content>()), ...);
+                ((assign_symbols<Content>(syms, current_offset), current_offset += count_positions<Content>()), ...);
             }(static_cast<Pattern*>(nullptr), symbols, offset);
-        }
-        else if constexpr (is_lazy_repeat<Pattern>::value) {
-            []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*,
-                                                         std::array<char, 512>& syms, size_t off) {
+        } else if constexpr (is_lazy_repeat<Pattern>::value) {
+            []<size_t A, size_t B, typename... Content>(lazy_repeat<A, B, Content...>*, std::array<char, 512>& syms,
+                                                        size_t off) {
                 size_t current_offset = off;
-                ((assign_symbols<Content>(syms, current_offset),
-                  current_offset += count_positions<Content>()), ...);
+                ((assign_symbols<Content>(syms, current_offset), current_offset += count_positions<Content>()), ...);
             }(static_cast<Pattern*>(nullptr), symbols, offset);
-        }
-        else if constexpr (is_possessive_repeat<Pattern>::value) {
+        } else if constexpr (is_possessive_repeat<Pattern>::value) {
             []<size_t A, size_t B, typename... Content>(possessive_repeat<A, B, Content...>*,
-                                                         std::array<char, 512>& syms, size_t off) {
+                                                        std::array<char, 512>& syms, size_t off) {
                 size_t current_offset = off;
-                ((assign_symbols<Content>(syms, current_offset),
-                  current_offset += count_positions<Content>()), ...);
+                ((assign_symbols<Content>(syms, current_offset), current_offset += count_positions<Content>()), ...);
             }(static_cast<Pattern*>(nullptr), symbols, offset);
         }
-    }
-    else if constexpr (CharacterLike<Pattern>) {
-        symbols[offset + 1] = '?';  // Represent character class as '?'
+    } else if constexpr (CharacterLike<Pattern>) {
+        symbols[offset + 1] = '?'; // Represent character class as '?'
     }
 }
 
@@ -935,7 +944,7 @@ struct glushkov_nfa {
     constexpr glushkov_nfa() {
         // 1. Count positions (state 0 is start, positions are states 1..N)
         constexpr size_t num_positions = count_positions<Pattern>();
-        state_count = num_positions + 1;  // +1 for start state
+        state_count = num_positions + 1; // +1 for start state
 
         static_assert(num_positions + 1 <= MAX_POSITIONS, "Pattern too large");
 

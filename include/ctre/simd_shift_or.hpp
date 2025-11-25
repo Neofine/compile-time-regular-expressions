@@ -532,11 +532,11 @@ inline bool match_string_shift_or(Iterator& current, const EndIterator last, con
 
     constexpr char pattern[] = {static_cast<char>(String)...};
 
-    if constexpr (CTRE_SIMD_ENABLED) {
-        if (get_simd_capability() >= SIMD_CAPABILITY_SSSE3) {
-            return match_string_vector_prefilter<string_length>(current, last, pattern);
-        }
-    }
+    // BUG FIX #11: Removed broken SIMD dispatch that called MATCH functions instead of SEARCH
+    // The match_string_vector_prefilter and match_string_prefilter_2bytes* functions are
+    // designed to MATCH at the current position, not SEARCH for the pattern in the text.
+    // This caused ALL decomposition searches to fail with 0 matches.
+    // Solution: Always use the Shift-Or algorithm, which correctly searches for the pattern.
 
     static constexpr shift_or_state<string_length> state = []() {
         shift_or_state<string_length> s;

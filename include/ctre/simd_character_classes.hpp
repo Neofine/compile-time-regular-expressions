@@ -329,29 +329,67 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             } else {
                 return match_single_char_repeat_scalar<min_char, MinCount, MaxCount>(current, last, flags, count);
             }
-        } else if constexpr (range_size <= 3) {
-            return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
         } else {
+            // BUG FIX #20: Use SIMD range checks for ALL range sizes (including small ones like [0-2])
+            // BUG FIX #27: Hoist invariant computations out of hot loop
             __m256i min_vec = _mm256_set1_epi8(min_char);
             __m256i max_vec = _mm256_set1_epi8(max_char);
 
+            // Hoist invariants for case-insensitive matching
+            __m256i lowercase_mask = _mm256_set1_epi8(0x20);
+            __m256i min_lower = _mm256_or_si256(min_vec, lowercase_mask);
+            __m256i max_lower = _mm256_or_si256(max_vec, lowercase_mask);
+            __m256i min_minus_one = _mm256_sub_epi8(case_insensitive ? min_lower : min_vec, _mm256_set1_epi8(1));
+            __m256i max_plus_one = _mm256_add_epi8(case_insensitive ? max_lower : max_vec, _mm256_set1_epi8(1));
+
+            // Unroll loop 2x for better ILP (instruction-level parallelism)
+            while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
+                // Process first 32 bytes
+                __m256i data1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+                __m256i data1_proc = case_insensitive ? _mm256_or_si256(data1, lowercase_mask) : data1;
+                __m256i ge_min1 = _mm256_cmpgt_epi8(data1_proc, min_minus_one);
+                __m256i le_max1 = _mm256_cmpgt_epi8(max_plus_one, data1_proc);
+                __m256i result1 = _mm256_and_si256(ge_min1, le_max1);
+                int mask1 = _mm256_movemask_epi8(result1);
+
+                // Process second 32 bytes
+                __m256i data2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*(current + 32)));
+                __m256i data2_proc = case_insensitive ? _mm256_or_si256(data2, lowercase_mask) : data2;
+                __m256i ge_min2 = _mm256_cmpgt_epi8(data2_proc, min_minus_one);
+                __m256i le_max2 = _mm256_cmpgt_epi8(max_plus_one, data2_proc);
+                __m256i result2 = _mm256_and_si256(ge_min2, le_max2);
+                int mask2 = _mm256_movemask_epi8(result2);
+
+                // Check both masks
+                if (static_cast<unsigned int>(mask1) == 0xFFFFFFFFU &&
+                    static_cast<unsigned int>(mask2) == 0xFFFFFFFFU) {
+                    current += 64;
+                    count += 64;
+                } else {
+                    // Handle partial match in first vector
+                    if (static_cast<unsigned int>(mask1) != 0xFFFFFFFFU) {
+                        int first_mismatch = __builtin_ctz(~mask1);
+                        current += first_mismatch;
+                        count += first_mismatch;
+                        break;
+                    }
+                    // Handle partial match in second vector
+                    current += 32;
+                    count += 32;
+                    int first_mismatch = __builtin_ctz(~mask2);
+                    current += first_mismatch;
+                    count += first_mismatch;
+                    break;
+                }
+            }
+
+            // Handle remaining bytes with single-vector loop
             while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
                 __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-                __m256i result;
-
-                if (case_insensitive) {
-                    __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
-                    __m256i min_lower = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
-                    __m256i max_lower = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
-
-                    __m256i ge_min = _mm256_cmpgt_epi8(data_lower, _mm256_sub_epi8(min_lower, _mm256_set1_epi8(1)));
-                    __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_lower, _mm256_set1_epi8(1)), data_lower);
-                    result = _mm256_and_si256(ge_min, le_max);
-                } else {
-                    __m256i ge_min = _mm256_cmpgt_epi8(data, _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1)));
-                    __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_vec, _mm256_set1_epi8(1)), data);
-                    result = _mm256_and_si256(ge_min, le_max);
-                }
+                __m256i data_proc = case_insensitive ? _mm256_or_si256(data, lowercase_mask) : data;
+                __m256i ge_min = _mm256_cmpgt_epi8(data_proc, min_minus_one);
+                __m256i le_max = _mm256_cmpgt_epi8(max_plus_one, data_proc);
+                __m256i result = _mm256_and_si256(ge_min, le_max);
 
                 int mask = _mm256_movemask_epi8(result);
                 if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
@@ -412,29 +450,67 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
             } else {
                 return match_single_char_repeat_scalar<min_char, MinCount, MaxCount>(current, last, flags, count);
             }
-        } else if constexpr (range_size <= 3) {
-            return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, flags, count);
         } else {
+            // BUG FIX #20: Use SIMD range checks for ALL range sizes (including small ones like [0-2])
+            // BUG FIX #27: Hoist invariant computations out of hot loop
             __m128i min_vec = _mm_set1_epi8(min_char);
             __m128i max_vec = _mm_set1_epi8(max_char);
 
+            // Hoist invariants for case-insensitive matching
+            __m128i lowercase_mask = _mm_set1_epi8(0x20);
+            __m128i min_lower = _mm_or_si128(min_vec, lowercase_mask);
+            __m128i max_lower = _mm_or_si128(max_vec, lowercase_mask);
+            __m128i min_minus_one = _mm_sub_epi8(case_insensitive ? min_lower : min_vec, _mm_set1_epi8(1));
+            __m128i max_plus_one = _mm_add_epi8(case_insensitive ? max_lower : max_vec, _mm_set1_epi8(1));
+
+            // Unroll loop 2x for better ILP (instruction-level parallelism)
+            while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+                // Process first 16 bytes
+                __m128i data1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+                __m128i data1_proc = case_insensitive ? _mm_or_si128(data1, lowercase_mask) : data1;
+                __m128i ge_min1 = _mm_cmpgt_epi8(data1_proc, min_minus_one);
+                __m128i le_max1 = _mm_cmpgt_epi8(max_plus_one, data1_proc);
+                __m128i result1 = _mm_and_si128(ge_min1, le_max1);
+                int mask1 = _mm_movemask_epi8(result1);
+
+                // Process second 16 bytes
+                __m128i data2 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*(current + 16)));
+                __m128i data2_proc = case_insensitive ? _mm_or_si128(data2, lowercase_mask) : data2;
+                __m128i ge_min2 = _mm_cmpgt_epi8(data2_proc, min_minus_one);
+                __m128i le_max2 = _mm_cmpgt_epi8(max_plus_one, data2_proc);
+                __m128i result2 = _mm_and_si128(ge_min2, le_max2);
+                int mask2 = _mm_movemask_epi8(result2);
+
+                // Check both masks
+                if (static_cast<unsigned int>(mask1) == 0xFFFFU &&
+                    static_cast<unsigned int>(mask2) == 0xFFFFU) {
+                    current += 32;
+                    count += 32;
+                } else {
+                    // Handle partial match in first vector
+                    if (static_cast<unsigned int>(mask1) != 0xFFFFU) {
+                        int first_mismatch = __builtin_ctz(~mask1);
+                        current += first_mismatch;
+                        count += first_mismatch;
+                        break;
+                    }
+                    // Handle partial match in second vector
+                    current += 16;
+                    count += 16;
+                    int first_mismatch = __builtin_ctz(~mask2);
+                    current += first_mismatch;
+                    count += first_mismatch;
+                    break;
+                }
+            }
+
+            // Handle remaining bytes with single-vector loop
             while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
                 __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
-                __m128i result;
-
-                if (case_insensitive) {
-                    __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
-                    __m128i min_lower = _mm_or_si128(min_vec, _mm_set1_epi8(0x20));
-                    __m128i max_lower = _mm_or_si128(max_vec, _mm_set1_epi8(0x20));
-
-                    __m128i ge_min = _mm_cmpgt_epi8(data_lower, _mm_sub_epi8(min_lower, _mm_set1_epi8(1)));
-                    __m128i le_max = _mm_cmpgt_epi8(_mm_add_epi8(max_lower, _mm_set1_epi8(1)), data_lower);
-                    result = _mm_and_si128(ge_min, le_max);
-                } else {
-                    __m128i ge_min = _mm_cmpgt_epi8(data, _mm_sub_epi8(min_vec, _mm_set1_epi8(1)));
-                    __m128i le_max = _mm_cmpgt_epi8(_mm_add_epi8(max_vec, _mm_set1_epi8(1)), data);
-                    result = _mm_and_si128(ge_min, le_max);
-                }
+                __m128i data_proc = case_insensitive ? _mm_or_si128(data, lowercase_mask) : data;
+                __m128i ge_min = _mm_cmpgt_epi8(data_proc, min_minus_one);
+                __m128i le_max = _mm_cmpgt_epi8(max_plus_one, data_proc);
+                __m128i result = _mm_and_si128(ge_min, le_max);
 
                 int mask = _mm_movemask_epi8(result);
                 if (static_cast<unsigned int>(mask) == 0xFFFFU) {

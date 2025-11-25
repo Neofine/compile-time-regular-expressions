@@ -3,6 +3,16 @@
 **/*.tmp
 test
 result
+
+# Debug and test executables
+debug_*
+test_az_*
+tests/*
+!tests/*.cpp
+!tests/*.hpp
+!tests/CMakeLists.txt
+!tests/benchmark-exec/
+!tests/benchmark-range/
 tests/benchmark-exec/*
 !tests/benchmark-exec/Makefile
 !tests/benchmark-exec/.gitignore

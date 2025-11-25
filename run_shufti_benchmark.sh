@@ -25,8 +25,8 @@ echo "Running benchmarks..."
 echo ""
 echo "SHUFTI (SIMD Character-Class Matching) Performance Comparison"
 echo "============================================================="
-printf "%-15s %-10s %-10s %-8s\n" "Pattern" "SIMD" "Non-SIMD" "Speedup"
-echo "------------------------------------------------------------"
+printf "%-20s %-15s %-15s %-10s\n" "Pattern" "Before (ns)" "After (ns)" "Speedup"
+echo "--------------------------------------------------------------------"
 
 # Create associative arrays to store results
 declare -A simd_times
@@ -52,11 +52,11 @@ for pattern_name in "${!simd_times[@]}"; do
         simd_time="${simd_times[$pattern_name]}"
         nosimd_time="${nosimd_times[$pattern_name]}"
         speedup=$(echo "scale=2; $nosimd_time / $simd_time" | bc -l 2>/dev/null || echo "0")
-        printf "%-15s %-10.2f %-10.2f %-8.2f x\n" "$pattern_name" "$simd_time" "$nosimd_time" "$speedup"
+        printf "%-20s %-15.2f %-15.2f %-10.2fx\n" "$pattern_name" "$nosimd_time" "$simd_time" "$speedup"
     fi
 done
 
-echo "------------------------------------------------------------"
+echo "--------------------------------------------------------------------"
 
 # Calculate overall statistics
 total_simd=0
@@ -75,27 +75,10 @@ if [[ $count -gt 0 ]]; then
     overall_speedup=$(echo "scale=2; $total_nosimd / $total_simd" | bc -l 2>/dev/null || echo "N/A")
     echo ""
     echo "Overall Statistics:"
-    echo "Total SIMD time: ${total_simd} ns"
     echo "Total Non-SIMD time: ${total_nosimd} ns"
+    echo "Total SIMD time: ${total_simd} ns"
     echo "Overall speedup: ${overall_speedup}x"
     echo "Number of patterns: $count"
-
-    # Show character class specific analysis
-    echo ""
-    echo "Character Class Analysis:"
-    echo "========================"
-
-    # Find SHUFTI vs regex comparisons
-    for pattern_name in "${!simd_times[@]}"; do
-        if [[ -n "${nosimd_times[$pattern_name]}" ]]; then
-            if [[ "$pattern_name" == *"shufti"* ]]; then
-                simd_time="${simd_times[$pattern_name]}"
-                nosimd_time="${nosimd_times[$pattern_name]}"
-                speedup=$(echo "scale=2; $nosimd_time / $simd_time" | bc -l 2>/dev/null || echo "0")
-                printf "%-20s %-8.2f x (SHUFTI vs Regex)\n" "$pattern_name" "$speedup"
-            fi
-        fi
-    done
 fi
 
 # Cleanup

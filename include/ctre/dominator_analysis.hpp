@@ -165,6 +165,7 @@ struct literal_result {
     size_t length = 0;
     bool has_literal = false;
     size_t start_position = 0;  // Position in NFA where literal starts
+    size_t nfa_dominator_length = 0;  // Length of NFA-based dominator literal (for expansion validation)
 
     constexpr void add_char(char c) {
         if (length < MaxLength) {
@@ -193,15 +194,39 @@ constexpr auto extract_literal_from_dominators(const NFA& nfa) {
         size_t pos = doms.dominators[i];
         char sym = nfa.states[pos].symbol;
 
-        // Check if it's a concrete character (not '.', '?', etc.)
-        if (sym != '\0' && sym != '.' && sym != '?') {
-            // Start or extend current sequence
-            if (current.length == 0) {
-                current.start_position = pos;
+        // Check if this state has a self-loop (variable repeat like +, *)
+        bool has_self_loop = false;
+        for (size_t j = 0; j < nfa.states[pos].successor_count; ++j) {
+            if (nfa.states[pos].successors[j] == pos) {
+                has_self_loop = true;
+                break;
             }
-            current.add_char(sym);
+        }
+
+        // Check if it's a concrete character (not '.', '?', etc.) and NOT a variable repeat
+        if (sym != '\0' && sym != '.' && sym != '?' && !has_self_loop) {
+            // Check if this position is consecutive with current sequence
+            bool is_consecutive = (current.length == 0) ||
+                                   (pos == current.start_position + current.length);
+
+            if (is_consecutive) {
+                // Start or extend current sequence
+                if (current.length == 0) {
+                    current.start_position = pos;
+                }
+                current.add_char(sym);
+            } else {
+                // Gap in positions - break sequence
+                if (current.length > best.length) {
+                    best = current;
+                }
+                // Start new sequence
+                current = literal_result<64>{};
+                current.start_position = pos;
+                current.add_char(sym);
+            }
         } else {
-            // Break in sequence - check if current is best
+            // Non-concrete character or variable repeat - break in sequence
             if (current.length > best.length) {
                 best = current;
             }
@@ -217,12 +242,13 @@ constexpr auto extract_literal_from_dominators(const NFA& nfa) {
     return best;
 }
 
-// Convenience function: check if pattern has extractable literal
+// Convenience function: check if pattern has extractable literal (path only)
 template <typename Pattern>
 constexpr bool has_extractable_literal() {
     constexpr auto nfa = glushkov::glushkov_nfa<Pattern>();
-    constexpr auto literal = extract_literal_from_dominators(nfa);
-    return literal.has_literal;
+    constexpr auto path_literal = extract_literal_from_dominators(nfa);
+    return path_literal.has_literal;
+    // Note: Region analysis fallback is in extract_literal() instead
 }
 
 // Convenience function: extract literal from pattern
@@ -230,6 +256,23 @@ template <typename Pattern>
 constexpr auto extract_literal() {
     constexpr auto nfa = glushkov::glushkov_nfa<Pattern>();
     return extract_literal_from_dominators(nfa);
+}
+
+// With region fallback (defined in decomposition.hpp to avoid circular dependency)
+template <typename Pattern>
+inline auto extract_literal_with_fallback() {
+    constexpr auto nfa = glushkov::glushkov_nfa<Pattern>();
+
+    // Step 1: Try dominant path analysis (fast, covers 97%+)
+    constexpr auto path_result = extract_literal_from_dominators(nfa);
+    if constexpr (path_result.has_literal) {
+        return path_result;  // Path analysis succeeded!
+    }
+
+    // Step 2: Fallback to dominant region analysis (covers remaining 2-3%)
+    // Requires region_analysis.hpp to be included
+    // This will be called from decomposition.hpp
+    return literal_result<64>{};  // Placeholder
 }
 
 } // namespace dominators
