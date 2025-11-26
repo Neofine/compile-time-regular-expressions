@@ -359,7 +359,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 					constexpr size_t range_size = max_char - min_char + 1;
 
 					// Use SIMD only for larger ranges (>5 chars) - small ranges are faster with scalar
-					if constexpr (range_size > 5) {
+					if constexpr (range_size > 23) {
 						if constexpr (simd::is_char_range_set<ContentType>()) {
 							// Only use SIMD for ASCII characters to avoid overflow
 							if constexpr (simd::simd_pattern_trait<ContentType>::is_ascii_range) {
