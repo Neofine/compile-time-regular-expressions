@@ -95,9 +95,8 @@ struct search_method {
 		// in case the RE is empty or fixed
 		auto out = evaluate(orig_begin, it, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
 
-		// ALERT: ugly hack
-		// propagate end even if it didn't match (this is needed for split function)
-		if (!out) out.set_end_mark(it);
+		// Always track search end position (needed for split iterator to know where to continue)
+		out.set_end_mark(it);
 		return out;
 	}
 

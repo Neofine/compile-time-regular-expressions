@@ -25,7 +25,7 @@ template <auto V, typename... Ts, typename Parameters> static constexpr auto app
 }
 // push_number
 template <auto V, size_t N, typename... Ts, typename Parameters> static constexpr auto apply(pcre::push_number, ctll::term<V>, pcre_context<ctll::list<number<N>, Ts...>, Parameters> subject) {
-	constexpr size_t previous = N * 10ull;	
+	constexpr size_t previous = N * 10ull;
 	return pcre_context{ctll::push_front(number<(previous + (V - '0'))>(), ctll::list<Ts...>()), subject.parameters};
 }
 
@@ -38,7 +38,7 @@ template <auto V, typename... Content, size_t A, size_t B, typename... Ts, typen
 	return pcre_context{ctll::push_front(repeat<A,B,Content...>(), ctll::list<Ts...>()), subject.parameters};
 }
 
-// repeat_exactly 
+// repeat_exactly
 template <auto V, typename Subject, size_t A, typename... Ts, typename Parameters> static constexpr auto apply(pcre::repeat_exactly, ctll::term<V>, pcre_context<ctll::list<number<A>, Subject, Ts...>, Parameters> subject) {
 	return pcre_context{ctll::push_front(repeat<A,A,Subject>(), ctll::list<Ts...>()), subject.parameters};
 }
@@ -47,7 +47,7 @@ template <auto V, typename... Content, size_t A, typename... Ts, typename Parame
 	return pcre_context{ctll::push_front(repeat<A,A,Content...>(), ctll::list<Ts...>()), subject.parameters};
 }
 
-// repeat_at_least (A+) 
+// repeat_at_least (A+)
 template <auto V, typename Subject, size_t A, typename... Ts, typename Parameters> static constexpr auto apply(pcre::repeat_at_least, ctll::term<V>, pcre_context<ctll::list<number<A>, Subject, Ts...>, Parameters> subject) {
 	return pcre_context{ctll::push_front(repeat<A,0,Subject>(), ctll::list<Ts...>()), subject.parameters};
 }

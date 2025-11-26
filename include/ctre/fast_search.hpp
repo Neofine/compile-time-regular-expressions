@@ -122,7 +122,8 @@ struct fast_search_method {
 
                 // No match found
                 auto out = evaluate(orig_begin, end, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
-                if (!out) out.set_end_mark(end);
+                // Always track search end position (needed for split iterator)
+                out.set_end_mark(end);
                 return out;
             }
         }
@@ -139,7 +140,8 @@ struct fast_search_method {
         }
 
         auto out = evaluate(orig_begin, it, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
-        if (!out) out.set_end_mark(it);
+        // Always track search end position (needed for split iterator)
+        out.set_end_mark(it);
         return out;
     }
 

@@ -11,7 +11,6 @@
 #include "../../ctre.hpp"
 #endif
 
-#include "compile_from_glushkov.hpp"
 #include "compile_from_ast.hpp"
 #include "pattern_traits.hpp"
 #include "simd_acceleration.hpp"

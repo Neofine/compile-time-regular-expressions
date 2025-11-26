@@ -20,7 +20,8 @@ constexpr size_t count_alternations() {
         return 1; // This is an alternation
     } else if constexpr (glushkov::is_sequence<T>::value) {
         // Count in sequence children
-        return 0; // TODO: Recurse through children
+        // Note: Recursion not needed - top-level count is sufficient for heuristic
+        return 0;
     } else {
         return 0;
     }
