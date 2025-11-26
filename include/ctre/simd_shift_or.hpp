@@ -469,7 +469,7 @@ inline bool match_string_vector_prefilter(It& cur, const EndIt last, const char*
         return match_string_prefilter_2bytes<PatternLength>(cur, last, pattern);
     }
     // Fall back to SSE2 version
-    else if (get_simd_capability() >= SIMD_CAPABILITY_SSSE3) {
+    else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
         return match_string_prefilter_2bytes_sse2<PatternLength>(cur, last, pattern);
     }
 #endif

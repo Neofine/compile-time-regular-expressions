@@ -4,14 +4,12 @@ set -e
 
 echo "Building CTRE regex benchmarks..."
 
-# Build SIMD version
-g++ -std=c++20 -Iinclude -Isrell_include -O3 -march=native -mtune=native -mavx2 -msse4.2 -mfma -mbmi2 -mlzcnt -mpopcnt \
-    -funroll-loops -ffast-math -flto \
+# Build SIMD version (optimized flags for best SIMD performance)
+g++ -std=c++20 -Iinclude -Isrell_include -O3 -march=native -mtune=native -mavx2 -msse4.2 \
     tests/ctre_proper_benchmark.cpp -o tests/ctre_proper_benchmark_simd -lstdc++
 
 # Build non-SIMD version
-g++ -std=c++20 -Iinclude -Isrell_include -O3 -march=native -mtune=native -mavx2 -msse4.2 -mfma -mbmi2 -mlzcnt -mpopcnt \
-    -funroll-loops -ffast-math -flto -DCTRE_DISABLE_SIMD \
+g++ -std=c++20 -Iinclude -Isrell_include -O3 -march=native -mtune=native -mavx2 -msse4.2 -DCTRE_DISABLE_SIMD \
     tests/ctre_proper_benchmark.cpp -o tests/ctre_proper_benchmark_nosimd -lstdc++
 
 echo "Running benchmarks..."

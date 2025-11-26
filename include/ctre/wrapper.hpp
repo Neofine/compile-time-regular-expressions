@@ -7,10 +7,7 @@
 #include "return_type.hpp"
 #include "utf8.hpp"
 #include "utility.hpp"
-#include "decomposition.hpp"  // For automatic decomposition
-#include "simd_shift_or.hpp"  // For SIMD literal search
 #ifndef CTRE_IN_A_MODULE
-#include <algorithm>
 #include <string_view>
 #endif
 
@@ -81,259 +78,12 @@ struct match_method {
 	}
 };
 
-// Helpers for detecting leading greedy repeats (.*) which cause backtracking issues
-template <typename T>
-struct sequence_first;
-
-template <typename First, typename... Rest>
-struct sequence_first<ctre::sequence<First, Rest...>> {
-	using type = First;
-};
-
-template <typename T>
-struct is_greedy_any_repeat : std::false_type {};
-
-// Note: repeat takes Content... as a variadic pack, so we need to match repeat<0, 0, any>
-// where any is the single element in the Content pack
-template <>
-struct is_greedy_any_repeat<ctre::repeat<0, 0, ctre::any>> : std::true_type {}; // .*
-
-template <>
-struct is_greedy_any_repeat<ctre::repeat<1, 0, ctre::any>> : std::true_type {}; // .+
-
-// BUG FIX #12: Check if pattern contains ANY greedy .* or .+ (not just leading)
-// These cause stack overflow/segfault with our lookback mechanism
-
-// Use a struct so we can do partial specialization
-template <typename T>
-struct greedy_any_repeat_checker {
-	static constexpr bool value = is_greedy_any_repeat<T>::value;
-};
-
-// Specialization for sequence
-template <typename... Content>
-struct greedy_any_repeat_checker<ctre::sequence<Content...>> {
-	static constexpr bool value = (greedy_any_repeat_checker<Content>::value || ...);
-};
-
-// Specialization for select
-template <typename A, typename B>
-struct greedy_any_repeat_checker<ctre::select<A, B>> {
-	static constexpr bool value = greedy_any_repeat_checker<A>::value || greedy_any_repeat_checker<B>::value;
-};
-
-// Specialization for repeat - check if it's .* or .+ first, then recurse into content
-template <size_t N, size_t M, typename... Content>
-struct greedy_any_repeat_checker<ctre::repeat<N, M, Content...>> {
-	// Check if this repeat itself is .* or .+ (greedy repeat of any)
-	static constexpr bool is_greedy_dot = is_greedy_any_repeat<ctre::repeat<N, M, Content...>>::value;
-	// Also recursively check the content
-	static constexpr bool has_greedy_in_content = (greedy_any_repeat_checker<Content>::value || ...);
-	static constexpr bool value = is_greedy_dot || has_greedy_in_content;
-};
-
-template <typename T>
-constexpr bool contains_greedy_any_repeat() {
-	return greedy_any_repeat_checker<T>::value;
-}
-
-template <typename T>
-constexpr bool has_leading_greedy_repeat() {
-	// Check if T is a sequence<repeat<0, 0, any>, ...>
-	if constexpr (requires { typename sequence_first<T>::type; }) {
-		using first = typename sequence_first<T>::type;
-		return is_greedy_any_repeat<first>::value;
-	}
-	// Check if T itself is repeat<0, 0, any>
-	return is_greedy_any_repeat<T>::value;
-}
-
 struct search_method {
-	// Helper: SIMD finder generator (same as fast_search.hpp)
-	template <auto Literal, size_t... Is>
-	static constexpr auto make_simd_finder(std::index_sequence<Is...>) noexcept {
-		return []<typename Iterator, typename EndIterator>(Iterator& it, EndIterator end) -> bool {
-			return simd::match_string_shift_or<Literal.chars[Is]...>(it, end, flags{});
-		};
-	}
-
-	// Helper: Naive literal search fallback
-	template <typename Iterator, typename EndIterator, size_t LitLength>
-	static constexpr bool find_literal_naive(Iterator& it, EndIterator end, const char (&literal)[LitLength]) noexcept {
-		if (it == end) return false;
-		const size_t len = LitLength - 1;
-		for (auto search_it = it; search_it != end; ++search_it) {
-			bool match = true;
-			auto check_it = search_it;
-			for (size_t i = 0; i < len && check_it != end; ++i, ++check_it) {
-				if (*check_it != literal[i]) {
-					match = false;
-					break;
-				}
-			}
-			if (match && std::distance(search_it, check_it) == static_cast<std::ptrdiff_t>(len)) {
-				it = search_it;
-				return true;
-			}
-		}
-		return false;
-	}
-
-	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd>
-	constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin orig_begin, IteratorBegin begin, IteratorEnd end, RE) noexcept {
+	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin orig_begin, IteratorBegin begin, IteratorEnd end, RE) noexcept {
 		using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-	// PHASE 5: Automatic decomposition optimization
-#ifndef CTRE_DISABLE_DECOMPOSITION
-	// Check if pattern has a useful literal for prefiltering
-	using RawAST = decomposition::unwrap_regex_t<RE>;
-
-#ifndef CTRE_CHAR_EXPANSION_DISABLED
-	// Use expansion-aware extraction (tries AST-based expansion first)
-	constexpr auto path_literal = decomposition::extract_literal_with_expansion_and_fallback<RE>();
-#else
-	// Use original NFA-based extraction only
-	constexpr auto path_literal = dominators::extract_literal<RawAST>();
-#endif
-
-	// BUG FIX #12: Disable decomposition for patterns with ANY greedy .* or .+
-	// These cause stack overflow/segfault with our lookback approach (e.g., hello.*world)
-	constexpr bool safe_for_decomposition = !ctre::contains_greedy_any_repeat<RawAST>();
-
-	// BUG FIX #10: Disable decomposition when end iterator is a sentinel (e.g., zero_terminated_string_end_iterator)
-	// The decomposition path assumes real iterators that can be converted to pointers
-	constexpr bool has_real_iterators = !std::is_same_v<IteratorEnd, zero_terminated_string_end_iterator>;
-
-	// BUG FIX #17: Require minimum literal length to avoid overhead on short patterns
-	// For patterns like x[0-1]y (3 chars total), SIMD prefiltering adds overhead vs direct regex
-	// Require literal >= 4 chars to ensure prefiltering is worthwhile
-	constexpr bool literal_long_enough = path_literal.has_literal && path_literal.length >= 4;
-
-	// BUG FIX #21: Disable decomposition for alternations where expansion picks a non-dominant literal
-	// Example: (foo|bar)suffix → expansion picks "foosuffix" but "barsuffix" inputs won't match
-	// Solution: extract_literal_with_expansion_and_fallback() now stores the NFA dominator length
-	// in the result, so we can compare without recomputing (avoids duplicate NFA construction)
-	constexpr bool literal_is_truly_dominant = !path_literal.has_literal ||  // No literal, safe to proceed
-	                                            (path_literal.nfa_dominator_length > 0 &&
-	                                             path_literal.length == path_literal.nfa_dominator_length);  // Lengths match, truly dominant
-
-	// Try compile-time path analysis first
-	if constexpr (safe_for_decomposition && has_real_iterators && literal_long_enough && literal_is_truly_dominant) {
-			constexpr auto literal = path_literal;
-
-		// Check if pattern is EXACTLY the literal (no prefix/suffix)
-		constexpr auto nfa = glushkov::glushkov_nfa<RawAST>();
-		constexpr bool pattern_is_literal = (nfa.state_count == literal.length + 1);
-
-		// BUG FIX #16: Don't use decomposition for pure literals!
-		// The original CTRE engine is faster (2-5ns) than decomposition overhead (15-20ns)
-		// Just skip this entire decomposition block and fall through to standard path
-		if constexpr (!pattern_is_literal) {
-		// Use compile-time extracted literal
-		{
-				// === FAST PATH: Use SIMD prefiltering ===
-				auto it = begin;
-				constexpr auto simd_finder = make_simd_finder<literal>(std::make_index_sequence<literal.length>{});
-
-				while (it != end) {
-					bool found;
-					if (std::is_constant_evaluated()) {
-						char lit_array[literal.length + 1];
-						for (size_t i = 0; i < literal.length; ++i) {
-							lit_array[i] = literal.chars[i];
-						}
-						lit_array[literal.length] = '\0';
-						found = find_literal_naive(it, end, lit_array);
-					} else {
-						found = simd_finder(it, end);
-						if (found && literal.length > 0) {
-							it = it - literal.length;
-						}
-					}
-
-				if (!found) break;
-
-				// Pattern has prefix/suffix - need lookback
-				constexpr size_t max_lookback = 64;
-				auto search_start = (it > begin + max_lookback) ? (it - max_lookback) : begin;
-
-				// Search forward from search_start to find the LEFTMOST match
-				for (auto try_pos = search_start; try_pos <= it; ++try_pos) {
-					if (auto out = evaluate(orig_begin, try_pos, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>())) {
-						return out;  // This is the leftmost match
-					}
-				}
-
-					++it;
-				}
-
-			auto out = evaluate(orig_begin, end, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
-			if (!out) out.set_end_mark(end);
-			return out;
-		}
-		} // End of !pattern_is_literal block
-} else {
-		// Fallback: Try region analysis at runtime (can't be constexpr)
-		if constexpr (safe_for_decomposition && has_real_iterators && literal_is_truly_dominant) {
-				if (!std::is_constant_evaluated()) {
-					constexpr auto nfa = glushkov::glushkov_nfa<RawAST>();
-					auto region_literal = region::extract_literal_from_regions(nfa);
-
-				// BUG FIX #17: Require minimum literal length for region analysis too
-				if (region_literal.has_literal && region_literal.length >= 4) {
-				// === FAST PATH: Use manual search for runtime literal ===
-				auto it = begin;
-				const size_t needle_length = region_literal.length;
-
-				// Check if pattern might be just the literal (heuristic: state_count close to literal length)
-				bool likely_literal_only = (nfa.state_count <= needle_length + 2);
-
-				while (it != end) {
-					// Try to match the literal at current position
-					bool match = true;
-					auto check_it = it;
-					for (size_t i = 0; i < needle_length && check_it != end; ++i, ++check_it) {
-						if (*check_it != region_literal.chars[i]) {
-							match = false;
-							break;
-						}
-					}
-
-					if (match && check_it - it == static_cast<std::ptrdiff_t>(needle_length)) {
-						// Found literal at 'it' - try matching
-						if (likely_literal_only) {
-							// Pattern is likely just the literal - try exact position only
-							if (auto out = evaluate(orig_begin, it, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>())) {
-								return out;
-							}
-						} else {
-							// Pattern has more than literal - use lookback
-							constexpr size_t max_lookback = 64;
-							auto search_start = (it > begin + max_lookback) ? (it - max_lookback) : begin;
-
-							for (auto try_pos = search_start; try_pos <= it; ++try_pos) {
-								if (auto out = evaluate(orig_begin, try_pos, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>())) {
-									return out;
-								}
-							}
-						}
-					}
-
-					++it;
-					if (it == end) break;
-				}
-
-				auto out = evaluate(orig_begin, end, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
-				if (!out) out.set_end_mark(end);
-				return out;
-				}
-				}
-			}
-		}
-#endif // CTRE_DISABLE_DECOMPOSITION
-
-		// === STANDARD PATH: Original search implementation ===
 		constexpr bool fixed = starts_with_anchor(Modifier{}, ctll::list<RE>{});
+
 		auto it = begin;
 
 		for (; end != it && !fixed; ++it) {
@@ -342,13 +92,16 @@ struct search_method {
 			}
 		}
 
+		// in case the RE is empty or fixed
 		auto out = evaluate(orig_begin, it, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, end_mark, accept>());
+
+		// ALERT: ugly hack
+		// propagate end even if it didn't match (this is needed for split function)
 		if (!out) out.set_end_mark(it);
 		return out;
 	}
 
-	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd>
-	constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin begin, IteratorEnd end, RE) noexcept {
+	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin begin, IteratorEnd end, RE) noexcept {
 		return exec<Modifier, ResultIterator>(begin, begin, end, RE{});
 	}
 };
