@@ -1,1 +1,0 @@
-run_master_benchmark.sh

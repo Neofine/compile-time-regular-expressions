@@ -3,10 +3,10 @@ set -e
 
 # Build both versions
 g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -msse4.2 \
-    tests/ctre_proper_benchmark.cpp -o /tmp/ctre_simd 2>/dev/null
+    tests/master_benchmark.cpp -o /tmp/ctre_simd 2>/dev/null
 
 g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -msse4.2 -DCTRE_DISABLE_SIMD \
-    tests/ctre_proper_benchmark.cpp -o /tmp/ctre_nosimd 2>/dev/null
+    tests/master_benchmark.cpp -o /tmp/ctre_nosimd 2>/dev/null
 
 # Run and collect results
 /tmp/ctre_nosimd > /tmp/nosimd.csv
