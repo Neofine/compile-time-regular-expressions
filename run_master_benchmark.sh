@@ -4,9 +4,9 @@ echo "Compiling CTRE Master Benchmark..."
 echo "===================================="
 echo ""
 
-# Compile SIMD version
+# Compile SIMD version with LTO for better code size
 echo "Building with SIMD optimizations..."
-g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -msse4.2 \
+g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -msse4.2 -flto \
     tests/master_benchmark.cpp -o /tmp/ctre_master_simd 2>&1 | head -10
 
 if [ $? -ne 0 ]; then
@@ -14,9 +14,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Compile non-SIMD version
+# Compile non-SIMD version with LTO
 echo "Building without SIMD (baseline)..."
-g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -msse4.2 -DCTRE_DISABLE_SIMD \
+g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -msse4.2 -DCTRE_DISABLE_SIMD -flto \
     tests/master_benchmark.cpp -o /tmp/ctre_master_nosimd 2>&1 | head -10
 
 if [ $? -ne 0 ]; then

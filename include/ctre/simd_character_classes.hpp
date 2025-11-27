@@ -360,32 +360,36 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         // Direct comparison: N cmpeq + N or = 2N ops with longer dependency chain (for N>1)
         __m256i min_vec = _mm256_set1_epi8(min_char);
         __m256i max_vec = _mm256_set1_epi8(max_char);
-        const __m256i all_ones = _mm256_set1_epi8(-1); // Cache for testz
 
-        // PERF: Fast path for 16-byte inputs - use SSE4.2
+        // PERF: 16-byte fast path for inputs between 16-31 bytes
         if (has_at_least_bytes(current, last, 16) && !has_at_least_bytes(current, last, 32)) {
             __m128i min_vec_128 = _mm_set1_epi8(min_char);
             __m128i max_vec_128 = _mm_set1_epi8(max_char);
             __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
             __m128i result;
-
+            
             if (case_insensitive) {
                 __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
                 __m128i min_lower = _mm_or_si128(min_vec_128, _mm_set1_epi8(0x20));
                 __m128i max_lower = _mm_or_si128(max_vec_128, _mm_set1_epi8(0x20));
+                
                 __m128i lt_min = _mm_cmpgt_epi8(min_lower, data_lower);
                 __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
+                
                 __m128i gt_max = _mm_cmpgt_epi8(data_lower, max_lower);
                 __m128i le_max = _mm_xor_si128(gt_max, _mm_set1_epi8(static_cast<char>(0xFF)));
+                
                 result = _mm_and_si128(ge_min, le_max);
             } else {
                 __m128i lt_min = _mm_cmpgt_epi8(min_vec_128, data);
                 __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
+                
                 __m128i gt_max = _mm_cmpgt_epi8(data, max_vec_128);
                 __m128i le_max = _mm_xor_si128(gt_max, _mm_set1_epi8(static_cast<char>(0xFF)));
+                
                 result = _mm_and_si128(ge_min, le_max);
             }
-
+            
             int mask = _mm_movemask_epi8(result);
             if (static_cast<unsigned int>(mask) == 0xFFFFU) {
                 current += 16;
@@ -407,46 +411,34 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
                 __m256i result;
 
-                // Simple range comparison - accept that it's less efficient than single character matching
+                // Simple range comparison - keep original code for stability
                 if (case_insensitive) {
                     __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
                     __m256i min_lower = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
                     __m256i max_lower = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
 
-                    // FIX: Avoid signed char overflow by rewriting comparisons
-                    // Instead of: data > (min - 1) [overflows if min=0x00]
-                    // Use: data >= min, which is !(min > data)
-                    __m256i lt_min = _mm256_cmpgt_epi8(min_lower, data_lower);  // min > data
-                    __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));  // NOT(min > data)
+                    __m256i lt_min = _mm256_cmpgt_epi8(min_lower, data_lower);
+                    __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
 
-                    // Instead of: (max + 1) > data [overflows if max=0xFF]
-                    // Use: data <= max, which is !(data > max)
-                    __m256i gt_max = _mm256_cmpgt_epi8(data_lower, max_lower);  // data > max
-                    __m256i le_max = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));  // NOT(data > max)
+                    __m256i gt_max = _mm256_cmpgt_epi8(data_lower, max_lower);
+                    __m256i le_max = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));
 
                     result = _mm256_and_si256(ge_min, le_max);
                 } else {
-                    // FIX: Avoid signed char overflow by rewriting comparisons
-                    // data >= min is !(min > data)
                     __m256i lt_min = _mm256_cmpgt_epi8(min_vec, data);
                     __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
 
-                    // data <= max is !(data > max)
                     __m256i gt_max = _mm256_cmpgt_epi8(data, max_vec);
                     __m256i le_max = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));
 
                     result = _mm256_and_si256(ge_min, le_max);
                 }
 
-                // PERF: Use testz for faster all-match check
-                __m256i not_result = _mm256_xor_si256(result, all_ones);
-                if (_mm256_testz_si256(not_result, not_result)) {
-                    // All matched!
+                int mask = _mm256_movemask_epi8(result);
+                if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
                     current += 32;
                     count += 32;
                 } else {
-                    // Some mismatch
-                    int mask = _mm256_movemask_epi8(result);
                     int first_mismatch = __builtin_ctz(~mask);
                     current += first_mismatch;
                     count += first_mismatch;
@@ -514,7 +506,6 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
                 __m128i min_lower = _mm_or_si128(min_vec, _mm_set1_epi8(0x20));
                 __m128i max_lower = _mm_or_si128(max_vec, _mm_set1_epi8(0x20));
 
-                // FIX: Avoid signed char overflow - rewrite comparisons
                 __m128i lt_min = _mm_cmpgt_epi8(min_lower, data_lower);
                 __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
 
@@ -523,7 +514,6 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
 
                 result = _mm_and_si128(ge_min, le_max);
             } else {
-                // FIX: Avoid signed char overflow - rewrite comparisons
                 __m128i lt_min = _mm_cmpgt_epi8(min_vec, data);
                 __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
 
@@ -595,17 +585,13 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
     const __m256i target_vec = _mm256_set1_epi8(TargetChar);
     const __m256i target_lower_vec = case_insensitive ? _mm256_set1_epi8(TargetChar | 0x20) : target_vec;
-    const __m256i all_ones = _mm256_set1_epi8(-1); // Cache for testz operations
 
-    // PERF: Fast path for 16-byte inputs - use SSE4.2 instead of falling back to scalar
-    // Check 32-byte case first (most common) for better branch prediction
-    if (has_at_least_bytes(current, last, 32)) {
-        // Skip 16-byte path, go to 32-byte loop below
-    } else if (has_at_least_bytes(current, last, 16)) {
+    // PERF: 16-byte fast path for inputs between 16-31 bytes
+    if (has_at_least_bytes(current, last, 16) && !has_at_least_bytes(current, last, 32)) {
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i target_vec_128 = _mm_set1_epi8(TargetChar);
         __m128i result;
-
+        
         if (case_insensitive) {
             __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
             __m128i target_lower = _mm_set1_epi8(TargetChar | 0x20);
@@ -613,16 +599,15 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         } else {
             result = _mm_cmpeq_epi8(data, target_vec_128);
         }
-
-        // Use testz - check if all match
-        const __m128i ones = _mm_set1_epi8(-1);
-        if (_mm_testz_si128(_mm_xor_si128(result, ones), ones)) {
+        
+        int mask = _mm_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
             current += 16;
             count += 16;
         } else {
-            int mask = _mm_movemask_epi8(result);
-            current += __builtin_ctz(~mask);
-            count += __builtin_ctz(~mask);
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
         }
     }
 
@@ -643,16 +628,11 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result = _mm256_cmpeq_epi8(data, target_vec);
         }
 
-        // PERF: Check if all matched without extracting to scalar
-        // testz(~result, ~result) == 1 means all bits in result are set (all matched)
-        __m256i not_result = _mm256_xor_si256(result, all_ones);
-        if (_mm256_testz_si256(not_result, not_result)) {
-            // All matched! Process full 32 bytes
+        int mask = _mm256_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
             current += 32;
             count += 32;
         } else {
-            // Some mismatch - find it
-            int mask = _mm256_movemask_epi8(result);
             int first_mismatch = __builtin_ctz(~mask);
             current += first_mismatch;
             count += first_mismatch;
