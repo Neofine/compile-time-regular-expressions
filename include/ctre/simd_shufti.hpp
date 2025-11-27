@@ -157,13 +157,14 @@ struct shufti_pattern_trait<set<character<Cs>...>> {
     // because range SIMD does `>= '0' && <= '8'` which matches ALL of '0'-'8', not just even digits
     static constexpr bool is_sparse = is_sparse_character_set<Cs...>();
 
-    // PRODUCTION SETTINGS: Enable Shufti for sparse patterns with 5-20 characters
+    // PERF: Extended Shufti to support 5-30 characters (was 5-20)
+    // Enables Shufti for larger sparse sets like [aeiouAEIOU0123456789] (20 chars)
     // - Vowel patterns (good nibble diversity): 3.62x-6.45x speedup with Shufti
     // - Digit patterns (poor nibble diversity): 0.55x-0.72x with Shufti, but still CORRECT
     // - All sparse patterns MUST avoid range-based SIMD (it gives wrong results)
     // Auto-disabled for C-strings (sentinel iterators) to avoid overhead
     static constexpr bool should_use_shufti =
-        (num_chars >= 5 && num_chars <= 20) && is_sparse;
+        (num_chars >= 5 && num_chars <= 30) && is_sparse;
 };
 
 struct character_class {
@@ -368,8 +369,11 @@ inline bool find_alnum_avx2(const unsigned char* p, const unsigned char* end, co
         auto in_range = [](const __m256i& x, unsigned lo, unsigned hi) {
             __m256i L = _mm256_set1_epi8(char((int)lo ^ 0x80));
             __m256i H = _mm256_set1_epi8(char((int)hi ^ 0x80));
-            __m256i ge = _mm256_cmpgt_epi8(_mm256_add_epi8(x, _mm256_set1_epi8(1)), L); // x >= L
-            __m256i le = _mm256_cmpgt_epi8(_mm256_add_epi8(H, _mm256_set1_epi8(1)), x); // x <= H
+            // FIX: Avoid overflow - rewrite comparisons
+            __m256i lt = _mm256_cmpgt_epi8(L, x);
+            __m256i ge = _mm256_xor_si256(lt, _mm256_set1_epi8(static_cast<char>(0xFF)));
+            __m256i gt = _mm256_cmpgt_epi8(x, H);
+            __m256i le = _mm256_xor_si256(gt, _mm256_set1_epi8(static_cast<char>(0xFF)));
             return _mm256_and_si256(ge, le);
         };
 
@@ -415,8 +419,11 @@ inline bool find_digits_avx2(const unsigned char* p, const unsigned char* end, c
 
         __m256i L = _mm256_set1_epi8(char('0' ^ 0x80));
         __m256i H = _mm256_set1_epi8(char('9' ^ 0x80));
-        __m256i ge = _mm256_cmpgt_epi8(_mm256_add_epi8(x, _mm256_set1_epi8(1)), L); // x >= '0'
-        __m256i le = _mm256_cmpgt_epi8(_mm256_add_epi8(H, _mm256_set1_epi8(1)), x); // x <= '9'
+        // FIX: Avoid overflow - rewrite comparisons
+        __m256i lt = _mm256_cmpgt_epi8(L, x);
+        __m256i ge = _mm256_xor_si256(lt, _mm256_set1_epi8(static_cast<char>(0xFF)));
+        __m256i gt = _mm256_cmpgt_epi8(x, H);
+        __m256i le = _mm256_xor_si256(gt, _mm256_set1_epi8(static_cast<char>(0xFF)));
         __m256i ok = _mm256_and_si256(ge, le);
 
         int mask = _mm256_movemask_epi8(ok);
@@ -454,8 +461,11 @@ inline bool find_letters_avx2(const unsigned char* p, const unsigned char* end, 
         auto in_range = [](const __m256i& x, unsigned lo, unsigned hi) {
             __m256i L = _mm256_set1_epi8(char((int)lo ^ 0x80));
             __m256i H = _mm256_set1_epi8(char((int)hi ^ 0x80));
-            __m256i ge = _mm256_cmpgt_epi8(_mm256_add_epi8(x, _mm256_set1_epi8(1)), L); // x >= L
-            __m256i le = _mm256_cmpgt_epi8(_mm256_add_epi8(H, _mm256_set1_epi8(1)), x); // x <= H
+            // FIX: Avoid overflow - rewrite comparisons
+            __m256i lt = _mm256_cmpgt_epi8(L, x);
+            __m256i ge = _mm256_xor_si256(lt, _mm256_set1_epi8(static_cast<char>(0xFF)));
+            __m256i gt = _mm256_cmpgt_epi8(x, H);
+            __m256i le = _mm256_xor_si256(gt, _mm256_set1_epi8(static_cast<char>(0xFF)));
             return _mm256_and_si256(ge, le);
         };
 

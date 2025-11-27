@@ -354,8 +354,9 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
 			// Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
 			if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>, char>) {
-				// Try multi-range SIMD first (for patterns like [a-zA-Z], [0-9a-fA-F])
-				if constexpr (simd::is_two_range<ContentType>::value || simd::is_three_range<ContentType>::value) {
+				// Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
+				// Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
+				if constexpr (simd::is_multi_range<ContentType>::is_valid) {
 					Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
 					if (multirange_result != current) {
 						return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
@@ -370,64 +371,61 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 					}
 				}
 
-				// Check range size - balance SIMD overhead vs scalar simplicity
-				if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
-					constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
-					constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
-					constexpr size_t range_size = max_char - min_char + 1;
-					constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
+			// Check range size - balance SIMD overhead vs scalar simplicity
+			if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
+			constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
+			constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
+			// FIX: Cast to unsigned char to avoid signed overflow in range calculation
+			constexpr size_t range_size = static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
+				constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
 
-					// Gap detection: skip SIMD if char_count < range_size (has gaps)
-					// Note: Multi-range patterns (handled above) won't reach here
-					constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
+				// Gap detection: skip SIMD if char_count < range_size (has gaps)
+				// Note: Multi-range patterns (handled above) won't reach here
+				constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-					// Use SIMD only for larger ranges (>8 chars) WITHOUT gaps
-					if constexpr (!has_gaps && range_size > 8) {
-						if constexpr (simd::is_char_range_set<ContentType>()) {
-							// Only use SIMD for ASCII characters to avoid overflow
-							if constexpr (simd::simd_pattern_trait<ContentType>::is_ascii_range) {
-								Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-								if (simd_result != current) {
-									return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-								}
-							}
-						} else {
-							Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-							if (simd_result != current) {
-								return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-							}
-						}
-					}
-				} else {
-					// For patterns without min_char/max_char, always use SIMD
-					Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-					if (simd_result != current) {
-						return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-					}
+				// PERF: Special case for single characters (range_size == 1)
+				// Single chars should use SIMD - they're the simplest case!
+				constexpr bool is_single_char = (range_size == 1);
+
+				// Use SIMD for single chars OR larger ranges (>8 chars) WITHOUT gaps
+			if constexpr (!has_gaps && (is_single_char || range_size > 8)) {
+				// FIX: Removed is_ascii_range check - overflow bug is now fixed!
+				// We can now safely process high-bit characters (0x80-0xFF)
+				Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+				if (simd_result != current) {
+					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+				}
+			}
+			} else {
+				// For patterns without min_char/max_char, always use SIMD
+				Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+				if (simd_result != current) {
+					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
 				}
 			}
 		}
 	}
+}
 
-	// Original implementation for non-SIMD patterns
-	{
-		const auto backup_current = current;
+// Original implementation for non-SIMD patterns
+{
+	const auto backup_current = current;
 
-		for (size_t i{0}; less_than_or_infinite<B>(i); ++i) {
-			// try as many of inner as possible and then try outer once
-			auto inner_result = evaluate(begin, current, last, not_empty_match(f), captures, ctll::list<Content..., end_cycle_mark>());
+	for (size_t i{0}; less_than_or_infinite<B>(i); ++i) {
+		// try as many of inner as possible and then try outer once
+		auto inner_result = evaluate(begin, current, last, not_empty_match(f), captures, ctll::list<Content..., end_cycle_mark>());
 
-			if (!inner_result) {
-				if (!less_than<A>(i)) break;
-				return not_matched;
-			}
-
-			captures = inner_result.unmatch();
-			current = inner_result.get_end_position();
+		if (!inner_result) {
+			if (!less_than<A>(i)) break;
+			return not_matched;
 		}
 
-		return evaluate(begin, current, last, consumed_something(f, backup_current != current), captures, ctll::list<Tail...>());
+		captures = inner_result.unmatch();
+		current = inner_result.get_end_position();
 	}
+
+	return evaluate(begin, current, last, consumed_something(f, backup_current != current), captures, ctll::list<Tail...>());
+}
 }
 
 // (gready) repeat
@@ -491,8 +489,9 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
 			// Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
 			if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>, char>) {
-				// Try multi-range SIMD first (for patterns like [a-zA-Z], [0-9a-fA-F])
-				if constexpr (simd::is_two_range<ContentType>::value || simd::is_three_range<ContentType>::value) {
+				// Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
+				// Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
+				if constexpr (simd::is_multi_range<ContentType>::is_valid) {
 					Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
 					if (multirange_result != current) {
 						return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
@@ -507,34 +506,30 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 					}
 				}
 
-				// Check range size - balance SIMD overhead vs scalar simplicity
-				if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
-					constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
-					constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
-					constexpr size_t range_size = max_char - min_char + 1;
-					constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
+			// Check range size - balance SIMD overhead vs scalar simplicity
+			if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
+			constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
+			constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
+			// FIX: Cast to unsigned char to avoid signed overflow in range calculation
+			constexpr size_t range_size = static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
+				constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
 
-					// Gap detection: skip SIMD if char_count < range_size (has gaps)
-					// Note: Multi-range patterns (handled above) won't reach here
-					constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
+				// Gap detection: skip SIMD if char_count < range_size (has gaps)
+				// Note: Multi-range patterns (handled above) won't reach here
+				constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-					// Use SIMD only for larger ranges (>8 chars) WITHOUT gaps
-					if constexpr (!has_gaps && range_size > 8) {
-						if constexpr (simd::is_char_range_set<ContentType>()) {
-							// Only use SIMD for ASCII characters to avoid overflow
-							if constexpr (simd::simd_pattern_trait<ContentType>::is_ascii_range) {
-								Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-								if (simd_result != current) {
-									return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-								}
-							}
-						} else {
-							Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-							if (simd_result != current) {
-								return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-							}
-						}
-					}
+				// PERF: Special case for single characters (range_size == 1)
+				constexpr bool is_single_char = (range_size == 1);
+
+				// Use SIMD for single chars OR larger ranges (>8 chars) WITHOUT gaps
+			if constexpr (!has_gaps && (is_single_char || range_size > 8)) {
+				// FIX: Removed is_ascii_range check - overflow bug is now fixed!
+				// We can now safely process high-bit characters (0x80-0xFF)
+				Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+				if (simd_result != current) {
+					return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+				}
+			}
 				} else {
 					// For patterns without min_char/max_char, always use SIMD
 					Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);

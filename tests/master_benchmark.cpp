@@ -130,12 +130,24 @@ int main() {
     BENCH("[a-zA-Z]+_32", "[a-zA-Z]+", gen_range('a', 52, 32), "Mixed case plus (32)");
     BENCH("[a-zA-Z]+_64", "[a-zA-Z]+", gen_range('a', 52, 64), "Mixed case plus (64)");
 
-    // Hex patterns
+    // Hex patterns (3 ranges)
     BENCH("[0-9a-f]*_32", "[0-9a-f]*", gen_sparse("0123456789abcdef", 16, 32), "Hex lowercase star (32)");
     BENCH("[0-9a-f]*_64", "[0-9a-f]*", gen_sparse("0123456789abcdef", 16, 64), "Hex lowercase star (64)");
     BENCH("[0-9a-f]+_32", "[0-9a-f]+", gen_sparse("0123456789abcdef", 16, 32), "Hex lowercase plus (32)");
     BENCH("[0-9a-fA-F]*_32", "[0-9a-fA-F]*", gen_sparse("0123456789abcdefABCDEF", 22, 32), "Hex mixed star (32)");
     BENCH("[0-9a-fA-F]+_32", "[0-9a-fA-F]+", gen_sparse("0123456789abcdefABCDEF", 22, 32), "Hex mixed plus (32)");
+
+    // Multi-range patterns (4, 6, 8 ranges) - Tests N-range SIMD scalability
+    BENCH("[a-dA-Dg-jG-J]*_32", "[a-dA-Dg-jG-J]*", gen_sparse("abcdABCDghijGHIJ", 16, 32), "4 ranges star (32)");
+    BENCH("[a-dA-Dg-jG-J]*_64", "[a-dA-Dg-jG-J]*", gen_sparse("abcdABCDghijGHIJ", 16, 64), "4 ranges star (64)");
+    BENCH("[a-cA-Ce-gE-Gj-lJ-Lm-oM-Op-rP-R]*_32", "[a-cA-Ce-gE-Gj-lJ-Lm-oM-Op-rP-R]*",
+           gen_sparse("abcABCefgEFGjklJKLmnoMNOpqrPQR", 30, 32), "6 ranges star (32)");
+    BENCH("[a-cA-Ce-gE-Gj-lJ-Lm-oM-Op-rP-R]*_64", "[a-cA-Ce-gE-Gj-lJ-Lm-oM-Op-rP-R]*",
+           gen_sparse("abcABCefgEFGjklJKLmnoMNOpqrPQR", 30, 64), "6 ranges star (64)");
+    BENCH("[a-bA-Bd-eD-Eg-hG-Hi-jI-Jl-mL-Mn-oN-Op-qP-Q]*_32", "[a-bA-Bd-eD-Eg-hG-Hi-jI-Jl-mL-Mn-oN-Op-qP-Q]*",
+           gen_sparse("abABdeDEghGHijIJlmLMnoNOpqPQ", 28, 32), "8 ranges star (32)");
+    BENCH("[a-bA-Bd-eD-Eg-hG-Hi-jI-Jl-mL-Mn-oN-Op-qP-Q]*_64", "[a-bA-Bd-eD-Eg-hG-Hi-jI-Jl-mL-Mn-oN-Op-qP-Q]*",
+           gen_sparse("abABdeDEghGHijIJlmLMnoNOpqPQ", 28, 64), "8 ranges star (64)");
 
     // Sparse character sets (Shufti candidates)
     BENCH("[aeiou]*_32", "[aeiou]*", gen_sparse("aeiou", 5, 32), "Vowels star (32)");
@@ -148,6 +160,19 @@ int main() {
     BENCH("[02468]+_32", "[02468]+", gen_sparse("02468", 5, 32), "Even digits plus (32)");
     BENCH("[13579]*_32", "[13579]*", gen_sparse("13579", 5, 32), "Odd digits star (32)");
     BENCH("[13579]+_32", "[13579]+", gen_sparse("13579", 5, 32), "Odd digits plus (32)");
+
+    // Unicode/Extended character note:
+    // CTRE currently focuses on ASCII (0x00-0x7F) patterns for maximum performance.
+    // Future enhancements could include:
+    //   - Extended ASCII (0x80-0xFF) with \xHH escape notation
+    //   - Multi-byte UTF-8 (Greek: Α-Ω, Cyrillic: А-Я, etc.) with UTF-8 aware SIMD
+    //   - Unicode property classes (\p{Greek}, \p{Cyrillic}, etc.)
+    //
+    // Current SIMD optimizations work excellently for:
+    //   - ASCII letters [a-zA-Z]
+    //   - ASCII digits [0-9]
+    //   - ASCII symbols and punctuation
+    //   - Mixed ASCII ranges like [0-9a-fA-F]
 
     // More sizes for scaling tests
     BENCH("a*_16", "a*", gen_repeat('a', 16), "Single a star (16)");

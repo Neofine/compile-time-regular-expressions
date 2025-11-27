@@ -42,8 +42,12 @@ __attribute__((always_inline)) inline const char* simd_find_char_class_end(const
 
             while (current <= scan_end) {
                 __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(current));
-                __m256i ge_min = _mm256_cmpgt_epi8(data, _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1)));
-                __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_vec, _mm256_set1_epi8(1)), data);
+
+                // FIX: Avoid signed char overflow
+                __m256i lt_min = _mm256_cmpgt_epi8(min_vec, data);
+                __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
+                __m256i gt_max = _mm256_cmpgt_epi8(data, max_vec);
+                __m256i le_max = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));
                 __m256i result = _mm256_and_si256(ge_min, le_max);
 
                 int mask = _mm256_movemask_epi8(result);
@@ -57,7 +61,9 @@ __attribute__((always_inline)) inline const char* simd_find_char_class_end(const
         }
 
         // Scalar tail
-        while (current < end && *current >= min_char && *current <= max_char) {
+        // FIX: Use unsigned char comparison to avoid signed char issues
+        while (current < end && static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
+               static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char)) {
             ++current;
         }
         return current;
@@ -102,8 +108,12 @@ __attribute__((always_inline)) inline const char* simd_find_char_class(const cha
 
             while (current <= scan_end) {
                 __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(current));
-                __m256i ge_min = _mm256_cmpgt_epi8(data, _mm256_sub_epi8(min_vec, _mm256_set1_epi8(1)));
-                __m256i le_max = _mm256_cmpgt_epi8(_mm256_add_epi8(max_vec, _mm256_set1_epi8(1)), data);
+
+                // FIX: Avoid signed char overflow
+                __m256i lt_min = _mm256_cmpgt_epi8(min_vec, data);
+                __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
+                __m256i gt_max = _mm256_cmpgt_epi8(data, max_vec);
+                __m256i le_max = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));
                 __m256i result = _mm256_and_si256(ge_min, le_max);
 
                 int mask = _mm256_movemask_epi8(result);
@@ -116,8 +126,10 @@ __attribute__((always_inline)) inline const char* simd_find_char_class(const cha
             }
 
             // Scalar tail
+            // FIX: Use unsigned char comparison to avoid signed char issues
             for (; current != end; ++current) {
-                if (*current >= min_char && *current <= max_char) {
+                if (static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
+                    static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char)) {
                     return current;
                 }
             }
@@ -132,8 +144,12 @@ __attribute__((always_inline)) inline const char* simd_find_char_class(const cha
 
             while (current <= scan_end) {
                 __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(current));
-                __m128i ge_min = _mm_cmpgt_epi8(data, _mm_sub_epi8(min_vec, _mm_set1_epi8(1)));
-                __m128i le_max = _mm_cmpgt_epi8(_mm_add_epi8(max_vec, _mm_set1_epi8(1)), data);
+
+                // FIX: Avoid signed char overflow
+                __m128i lt_min = _mm_cmpgt_epi8(min_vec, data);
+                __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
+                __m128i gt_max = _mm_cmpgt_epi8(data, max_vec);
+                __m128i le_max = _mm_xor_si128(gt_max, _mm_set1_epi8(static_cast<char>(0xFF)));
                 __m128i result = _mm_and_si128(ge_min, le_max);
 
                 int mask = _mm_movemask_epi8(result);
@@ -145,8 +161,10 @@ __attribute__((always_inline)) inline const char* simd_find_char_class(const cha
             }
 
             // Scalar tail
+            // FIX: Use unsigned char comparison to avoid signed char issues
             for (; current != end; ++current) {
-                if (*current >= min_char && *current <= max_char) {
+                if (static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
+                    static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char)) {
                     return current;
                 }
             }
