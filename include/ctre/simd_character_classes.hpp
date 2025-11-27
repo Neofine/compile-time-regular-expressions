@@ -78,6 +78,7 @@ struct simd_pattern_trait<char_range<A, B>> {
     static constexpr auto max_char = B;
     static constexpr bool is_ascii_range = (A >= 0 && B <= 127);
     static constexpr bool is_contiguous = true;
+    static constexpr char single_char = A;
 };
 
 template <auto A, auto B>
@@ -150,8 +151,8 @@ struct is_char_range_set_trait<set<char_range<A, B>>> : std::true_type {
 };
 
 template <auto C>
-struct is_char_range_set_trait<set<character<C>>> : std::false_type {
-    using type = std::false_type;
+struct is_char_range_set_trait<set<character<C>>> : std::true_type {
+    using type = std::true_type;
 };
 
 template <auto C>
