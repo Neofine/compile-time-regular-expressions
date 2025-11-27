@@ -450,9 +450,9 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     // Note: Multi-range patterns (handled above) won't reach here
                     constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-                    // PERF: Enable SIMD for small ranges (1-2) OR larger ranges (>8 chars)
-                    // Testing 2-char ranges now
-                    constexpr bool use_simd = (range_size <= 2 || range_size > 8);
+                    // PERF: Enable SIMD for ALL contiguous ranges (no threshold)
+                    // Phase 5: Full enable - always use SIMD for contiguous ranges
+                    constexpr bool use_simd = true; // Always use SIMD if no gaps
                     if constexpr (!has_gaps && use_simd) {
                         // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                         // We can now safely process high-bit characters (0x80-0xFF)
@@ -599,9 +599,9 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     // Note: Multi-range patterns (handled above) won't reach here
                     constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-                    // PERF: Enable SIMD for small ranges (1-2) OR larger ranges (>8 chars)
-                    // Testing 2-char ranges now
-                    constexpr bool use_simd = (range_size <= 2 || range_size > 8);
+                    // PERF: Enable SIMD for ALL contiguous ranges (no threshold)
+                    // Phase 5: Full enable - always use SIMD for contiguous ranges
+                    constexpr bool use_simd = true; // Always use SIMD if no gaps
                     if constexpr (!has_gaps && use_simd) {
                         // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                         // We can now safely process high-bit characters (0x80-0xFF)
