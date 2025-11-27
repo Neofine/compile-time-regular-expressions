@@ -16,33 +16,53 @@ g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -msse4.2 -DCTRE_DISABLE_SIMD \
 printf "%-20s %-15s %-15s %-10s\n" "Pattern" "Before (ns)" "After (ns)" "Speedup"
 echo "--------------------------------------------------------------------------"
 
-# Process results
-total_nosimd=0
-total_simd=0
-count=0
+# Process and store results
+python3 << 'PYTHON'
+import sys
 
-while IFS=',' read -r pattern nosimd_time; do
-    # Look up matching simd time
-    simd_time=$(grep "^$pattern," /tmp/simd.csv | cut -d',' -f2)
-    
-    if [[ -n "$simd_time" && "$nosimd_time" != *"inf"* && "$simd_time" != *"inf"* ]]; then
-        speedup=$(awk -v n="$nosimd_time" -v s="$simd_time" 'BEGIN {printf "%.2f", n/s}')
-        printf "%-20s %-15.2f %-15.2f %-10s x\n" "$pattern" "$nosimd_time" "$simd_time" "$speedup"
-        
-        total_nosimd=$(awk -v t="$total_nosimd" -v n="$nosimd_time" 'BEGIN {print t+n}')
-        total_simd=$(awk -v t="$total_simd" -v s="$simd_time" 'BEGIN {print t+s}')
-        count=$((count + 1))
-    fi
-done < /tmp/nosimd.csv | sort
+# Read data
+nosimd = {}
+simd = {}
 
-echo "--------------------------------------------------------------------------"
-echo ""
-echo "Overall Statistics:"
-printf "Total Non-SIMD time: %.2f ns\n" "$total_nosimd"
-printf "Total SIMD time: %.2f ns\n" "$total_simd"
-overall=$(awk -v n="$total_nosimd" -v s="$total_simd" 'BEGIN {printf "%.2f", n/s}')
-echo "Overall speedup: ${overall}x"
-echo "Number of patterns: $count"
+with open('/tmp/nosimd.csv') as f:
+    for line in f:
+        parts = line.strip().split(',')
+        if len(parts) == 2:
+            nosimd[parts[0]] = float(parts[1])
+
+with open('/tmp/simd.csv') as f:
+    for line in f:
+        parts = line.strip().split(',')
+        if len(parts) == 2:
+            simd[parts[0]] = float(parts[1])
+
+# Calculate and print
+results = []
+total_nosimd = 0
+total_simd = 0
+
+for pattern in sorted(nosimd.keys()):
+    if pattern in simd:
+        ns = nosimd[pattern]
+        s = simd[pattern]
+        speedup = ns / s if s > 0 else 0
+        results.append((pattern, ns, s, speedup))
+        total_nosimd += ns
+        total_simd += s
+
+# Print results
+for pattern, ns, s, speedup in results:
+    print(f"{pattern:20s} {ns:15.2f} {s:15.2f} {speedup:10.2f} x")
+
+print("-" * 74)
+print()
+print("Overall Statistics:")
+print(f"Total Non-SIMD time: {total_nosimd:.2f} ns")
+print(f"Total SIMD time: {total_simd:.2f} ns")
+if total_simd > 0:
+    print(f"Overall speedup: {total_nosimd/total_simd:.2f}x")
+print(f"Number of patterns: {len(results)}")
+PYTHON
 
 # Cleanup
 rm -f /tmp/ctre_simd /tmp/ctre_nosimd /tmp/simd.csv /tmp/nosimd.csv
