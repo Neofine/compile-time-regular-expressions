@@ -1,26 +1,29 @@
 #ifndef CTRE__SIMD_STRING_MATCHING__HPP
 #define CTRE__SIMD_STRING_MATCHING__HPP
 
-#include <immintrin.h>
-#include <nmmintrin.h>  // SSE4.2 intrinsics for pcmpistrm/pcmpistri
-#include <cstdio>
-#include "simd_detection.hpp"
 #include "atoms_characters.hpp"
 #include "flags_and_modes.hpp"
+#include "simd_detection.hpp"
+#include <cstdio>
+#include <immintrin.h>
 #include <iterator>
+#include <nmmintrin.h> // SSE4.2 intrinsics for pcmpistrm/pcmpistri
 
 namespace ctre {
 namespace simd {
 
 // Forward declarations
 template <typename Iterator, typename EndIterator>
-inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars, size_t string_length);
+inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars,
+                                   size_t string_length);
 
 template <typename Iterator, typename EndIterator>
-inline bool match_string_sse42_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars, size_t string_length);
+inline bool match_string_sse42_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars,
+                                    size_t string_length);
 
 template <typename Iterator, typename EndIterator>
-inline bool match_string_scalar_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars, size_t string_length);
+inline bool match_string_scalar_impl(Iterator& current, const EndIterator last, const flags& f,
+                                     const char* string_chars, size_t string_length);
 
 // Runtime-only SIMD-optimized string matching (never constexpr)
 template <auto... String, typename Iterator, typename EndIterator>
@@ -53,8 +56,10 @@ inline bool match_string_simd(Iterator& current, const EndIterator last, const f
 
 // AVX2 implementation for long strings
 template <typename Iterator, typename EndIterator>
-inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars, size_t string_length) {
-    (void)last; (void)f; // Suppress unused parameter warnings
+inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars,
+                                   size_t string_length) {
+    (void)last;
+    (void)f; // Suppress unused parameter warnings
 
     Iterator pos = current;
 
@@ -65,8 +70,8 @@ inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, co
     while (processed + 64 <= string_length) {
         // Prefetch next iteration's data (128 bytes ahead for good coverage)
         if (processed + 128 <= string_length) {
-            __builtin_prefetch(&*(pos + 64), 0, 3);  // Prefetch input data
-            __builtin_prefetch(&string_chars[processed + 64], 0, 3);  // Prefetch pattern data
+            __builtin_prefetch(&*(pos + 64), 0, 3);                  // Prefetch input data
+            __builtin_prefetch(&string_chars[processed + 64], 0, 3); // Prefetch pattern data
         }
 
         // Load both 32-byte chunks in parallel
@@ -83,8 +88,7 @@ inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, co
         int mask1 = _mm256_movemask_epi8(result1);
         int mask2 = _mm256_movemask_epi8(result2);
 
-        if (static_cast<unsigned int>(mask1) != 0xFFFFFFFFU ||
-            static_cast<unsigned int>(mask2) != 0xFFFFFFFFU) {
+        if (static_cast<unsigned int>(mask1) != 0xFFFFFFFFU || static_cast<unsigned int>(mask2) != 0xFFFFFFFFU) {
             return false; // Mismatch found
         }
 
@@ -97,8 +101,8 @@ inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, co
     if (processed + 32 <= string_length) {
         // Prefetch next data if available
         if (processed + 48 <= string_length) {
-            __builtin_prefetch(&*(pos + 32), 0, 3);  // Prefetch input data
-            __builtin_prefetch(&string_chars[processed + 32], 0, 3);  // Prefetch pattern data
+            __builtin_prefetch(&*(pos + 32), 0, 3);                  // Prefetch input data
+            __builtin_prefetch(&string_chars[processed + 32], 0, 3); // Prefetch pattern data
         }
 
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*pos));
@@ -118,8 +122,8 @@ inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, co
     if (processed + 16 <= string_length) {
         // Prefetch next data if available
         if (processed + 32 <= string_length) {
-            __builtin_prefetch(&*(pos + 16), 0, 3);  // Prefetch input data
-            __builtin_prefetch(&string_chars[processed + 16], 0, 3);  // Prefetch pattern data
+            __builtin_prefetch(&*(pos + 16), 0, 3);                  // Prefetch input data
+            __builtin_prefetch(&string_chars[processed + 16], 0, 3); // Prefetch pattern data
         }
 
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*pos));
@@ -149,8 +153,10 @@ inline bool match_string_avx2_impl(Iterator& current, const EndIterator last, co
 
 // SSE4.2 implementation for medium strings - Uses hardware string instructions!
 template <typename Iterator, typename EndIterator>
-inline bool match_string_sse42_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars, size_t string_length) {
-    (void)last; (void)f; // Suppress unused parameter warnings
+inline bool match_string_sse42_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars,
+                                    size_t string_length) {
+    (void)last;
+    (void)f; // Suppress unused parameter warnings
 
     Iterator pos = current;
 
@@ -175,7 +181,7 @@ inline bool match_string_sse42_impl(Iterator& current, const EndIterator last, c
         // Use pcmpistri: Compare implicit-length strings, return index
         // Mode: EQUAL_EACH (0x08) + UBYTE_OPS (0x00) = 0x08
         // Returns 16 if all bytes match within the string length
-        int result = _mm_cmpistri(pattern, data, 0x18);  // 0x18 = EQUAL_EACH + NEGATIVE_POLARITY
+        int result = _mm_cmpistri(pattern, data, 0x18); // 0x18 = EQUAL_EACH + NEGATIVE_POLARITY
 
         if (result < static_cast<int>(string_length)) {
             return false; // Mismatch found
@@ -190,8 +196,8 @@ inline bool match_string_sse42_impl(Iterator& current, const EndIterator last, c
     while (processed + 16 <= string_length) {
         // Prefetch next iteration's data (32 bytes ahead for good coverage)
         if (processed + 32 <= string_length) {
-            __builtin_prefetch(&*(pos + 16), 0, 3);  // Prefetch input data
-            __builtin_prefetch(&string_chars[processed + 16], 0, 3);  // Prefetch pattern data
+            __builtin_prefetch(&*(pos + 16), 0, 3);                  // Prefetch input data
+            __builtin_prefetch(&string_chars[processed + 16], 0, 3); // Prefetch pattern data
         }
 
         // Load 16 bytes from input string
@@ -226,8 +232,10 @@ inline bool match_string_sse42_impl(Iterator& current, const EndIterator last, c
 
 // Scalar fallback implementation for short strings or when SIMD is not available
 template <typename Iterator, typename EndIterator>
-inline bool match_string_scalar_impl(Iterator& current, const EndIterator last, const flags& f, const char* string_chars, size_t string_length) {
-    (void)last; (void)f; // Suppress unused parameter warnings
+inline bool match_string_scalar_impl(Iterator& current, const EndIterator last, const flags& f,
+                                     const char* string_chars, size_t string_length) {
+    (void)last;
+    (void)f; // Suppress unused parameter warnings
 
     // DEBUG: Print debug info
     // printf("Scalar impl: string_length=%zu\n", string_length);

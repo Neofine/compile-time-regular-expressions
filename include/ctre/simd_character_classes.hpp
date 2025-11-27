@@ -7,6 +7,7 @@
 #include "flags_and_modes.hpp"
 #include <immintrin.h>
 #include <array>
+#include <type_traits>
 
 namespace ctre {
 namespace simd {
@@ -26,6 +27,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
 
+// Forward declare with template parameters
 template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
 
@@ -34,6 +36,29 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
 
 template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_single_char_repeat_scalar(Iterator current, const EndIterator& last, const flags& flags, size_t& count);
+
+// ============================================================================
+// SIMD BOUNDS CHECKING HELPERS
+// ============================================================================
+
+// Safe check if we have at least N bytes available
+// Handles different iterator types gracefully
+template <typename Iterator, typename EndIterator>
+inline constexpr bool has_at_least_bytes(Iterator current, EndIterator last, size_t n) {
+    // For pointers, we can directly compute distance
+    if constexpr (std::is_pointer_v<Iterator>) {
+        return static_cast<size_t>(last - current) >= n;
+    }
+    // For iterators that support operator-, use it
+    else if constexpr (requires { {last - current} -> std::convertible_to<std::ptrdiff_t>; }) {
+        auto dist = last - current;
+        return dist >= 0 && static_cast<size_t>(dist) >= n;
+    }
+    // Conservative fallback: assume we don't have enough
+    else {
+        return false;
+    }
+}
 
 // ============================================================================
 // SIMD PATTERN TRAITS
@@ -177,22 +202,9 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
     Iterator start = current;
     size_t count = 0;
 
-    // Safety check - skip SIMD for small ranges EXCEPT single characters
-    // Single chars (range_sz == 1) should use SIMD!
-    constexpr bool should_skip_simd = []() {
-        if constexpr (requires { simd_pattern_trait<PatternType>::min_char; simd_pattern_trait<PatternType>::max_char; }) {
-            constexpr char min_c = simd_pattern_trait<PatternType>::min_char;
-            constexpr char max_c = simd_pattern_trait<PatternType>::max_char;
-            constexpr size_t range_sz = static_cast<unsigned char>(max_c) - static_cast<unsigned char>(min_c) + 1;
-            // Skip for ranges 2-8 chars, but NOT for single chars (1) or large ranges (>8)
-            return (range_sz > 1 && range_sz <= 8);
-        }
-        return false;
-    }();
-
-    if constexpr (should_skip_simd) {
-        return start;
-    }
+    // PERF TEST: Try enabling SIMD for ALL range sizes, including 2-8 chars
+    // Theory: Even small ranges benefit from processing 32 bytes at once
+    // But we need to check if we have enough data to make SIMD worth it
 
     // PERF FIX: Single characters NOW use specialized SIMD dispatch!
     // We added match_single_char_repeat_avx2() which uses simple cmpeq
@@ -337,8 +349,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         constexpr size_t range_size = static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
         const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
 
-        // PERF: Dispatch to specialized single-char function for single character patterns
-        // Single char uses simple cmpeq - should be faster than range comparison
+        // PERF: Dispatch to specialized single-char function (uses simple cmpeq)
         if constexpr (range_size == 1 && requires { simd_pattern_trait<SetType>::single_char; }) {
             constexpr char target = simd_pattern_trait<SetType>::single_char;
             return match_single_char_repeat_avx2<target, MinCount, MaxCount>(current, last, flags, count);
@@ -350,10 +361,11 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         __m256i min_vec = _mm256_set1_epi8(min_char);
         __m256i max_vec = _mm256_set1_epi8(max_char);
 
-        // Process full 32-byte chunks
+        // Process full 32-byte chunks with bounds checking
         while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-                if (current == last) {
-                    break; // We're at the end
+                // SAFETY: Check if we have at least 32 bytes available
+                if (!has_at_least_bytes(current, last, 32)) {
+                    break; // Not enough data, fall back to scalar tail
                 }
 
                 __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
@@ -437,7 +449,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         constexpr size_t range_size = static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
         const bool case_insensitive = is_ascii_alpha(min_char) && is_ascii_alpha(max_char) && ctre::is_case_insensitive(flags);
 
-        // PERF: Dispatch to specialized single-char function for single character patterns
+        // PERF: Dispatch to specialized single-char function (uses simple cmpeq)
         if constexpr (range_size == 1 && requires { simd_pattern_trait<SetType>::single_char; }) {
             constexpr char target = simd_pattern_trait<SetType>::single_char;
             return match_single_char_repeat_sse42<target, MinCount, MaxCount>(current, last, flags, count);
@@ -447,10 +459,11 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         __m128i min_vec = _mm_set1_epi8(min_char);
         __m128i max_vec = _mm_set1_epi8(max_char);
 
-        // Process full 16-byte chunks
+        // Process full 16-byte chunks with bounds checking
         while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
-            if (current == last) {
-                break; // We're at the end
+            // SAFETY: Check if we have at least 16 bytes available
+            if (!has_at_least_bytes(current, last, 16)) {
+                break; // Not enough data, fall back to scalar tail
             }
 
             __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
@@ -543,10 +556,11 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     const __m256i target_vec = _mm256_set1_epi8(TargetChar);
     const __m256i target_lower_vec = case_insensitive ? _mm256_set1_epi8(TargetChar | 0x20) : target_vec;
 
-    // Process full 32-byte chunks
+    // Process full 32-byte chunks with bounds checking
     while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-        if (current == last) {
-            break; // We're at the end
+        // SAFETY: Check if we have at least 32 bytes available
+        if (!has_at_least_bytes(current, last, 32)) {
+            break; // Not enough data, fall back to scalar tail
         }
 
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
@@ -594,10 +608,11 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
     const __m128i target_vec = _mm_set1_epi8(TargetChar);
     const __m128i target_lower_vec = case_insensitive ? _mm_set1_epi8(TargetChar | 0x20) : target_vec;
 
-    // Process full 16-byte chunks
+    // Process full 16-byte chunks with bounds checking
     while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
-        if (current == last) {
-            break; // We're at the end
+        // SAFETY: Check if we have at least 16 bytes available
+        if (!has_at_least_bytes(current, last, 16)) {
+            break; // Not enough data, fall back to scalar tail
         }
 
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
