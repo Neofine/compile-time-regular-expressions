@@ -361,6 +361,41 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         __m256i min_vec = _mm256_set1_epi8(min_char);
         __m256i max_vec = _mm256_set1_epi8(max_char);
 
+        // PERF: Fast path for 16-byte inputs - use SSE4.2
+        if (has_at_least_bytes(current, last, 16) && !has_at_least_bytes(current, last, 32)) {
+            __m128i min_vec_128 = _mm_set1_epi8(min_char);
+            __m128i max_vec_128 = _mm_set1_epi8(max_char);
+            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+            __m128i result;
+
+            if (case_insensitive) {
+                __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+                __m128i min_lower = _mm_or_si128(min_vec_128, _mm_set1_epi8(0x20));
+                __m128i max_lower = _mm_or_si128(max_vec_128, _mm_set1_epi8(0x20));
+                __m128i lt_min = _mm_cmpgt_epi8(min_lower, data_lower);
+                __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
+                __m128i gt_max = _mm_cmpgt_epi8(data_lower, max_lower);
+                __m128i le_max = _mm_xor_si128(gt_max, _mm_set1_epi8(static_cast<char>(0xFF)));
+                result = _mm_and_si128(ge_min, le_max);
+            } else {
+                __m128i lt_min = _mm_cmpgt_epi8(min_vec_128, data);
+                __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
+                __m128i gt_max = _mm_cmpgt_epi8(data, max_vec_128);
+                __m128i le_max = _mm_xor_si128(gt_max, _mm_set1_epi8(static_cast<char>(0xFF)));
+                result = _mm_and_si128(ge_min, le_max);
+            }
+
+            int mask = _mm_movemask_epi8(result);
+            if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+                current += 16;
+                count += 16;
+            } else {
+                int first_mismatch = __builtin_ctz(~mask);
+                current += first_mismatch;
+                count += first_mismatch;
+            }
+        }
+
         // Process full 32-byte chunks with bounds checking
         while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
                 // SAFETY: Check if we have at least 32 bytes available
@@ -555,6 +590,33 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
     const __m256i target_vec = _mm256_set1_epi8(TargetChar);
     const __m256i target_lower_vec = case_insensitive ? _mm256_set1_epi8(TargetChar | 0x20) : target_vec;
+
+    // PERF: Fast path for 16-byte inputs - use SSE4.2 instead of falling back to scalar
+    if (has_at_least_bytes(current, last, 16) && !has_at_least_bytes(current, last, 32)) {
+        // Exactly 16 bytes available - use SSE4.2 for efficiency
+        __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+        __m128i target_vec_128 = _mm_set1_epi8(TargetChar);
+        __m128i result;
+
+        if (case_insensitive) {
+            __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
+            __m128i target_lower = _mm_set1_epi8(TargetChar | 0x20);
+            result = _mm_cmpeq_epi8(data_lower, target_lower);
+        } else {
+            result = _mm_cmpeq_epi8(data, target_vec_128);
+        }
+
+        int mask = _mm_movemask_epi8(result);
+        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+            current += 16;
+            count += 16;
+        } else {
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
+        }
+        // Fall through to scalar for any remaining bytes
+    }
 
     // Process full 32-byte chunks with bounds checking
     while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
