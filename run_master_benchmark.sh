@@ -19,6 +19,7 @@ echo "--------------------------------------------------------------------------
 # Process and store results
 python3 << 'PYTHON'
 import sys
+import math
 
 # Read data
 nosimd = {}
@@ -28,13 +29,23 @@ with open('/tmp/nosimd.csv') as f:
     for line in f:
         parts = line.strip().split(',')
         if len(parts) == 2:
-            nosimd[parts[0]] = float(parts[1])
+            try:
+                val = float(parts[1])
+                if not math.isinf(val) and not math.isnan(val):
+                    nosimd[parts[0]] = val
+            except:
+                pass
 
 with open('/tmp/simd.csv') as f:
     for line in f:
         parts = line.strip().split(',')
         if len(parts) == 2:
-            simd[parts[0]] = float(parts[1])
+            try:
+                val = float(parts[1])
+                if not math.isinf(val) and not math.isnan(val):
+                    simd[parts[0]] = val
+            except:
+                pass
 
 # Calculate and print
 results = []
@@ -45,10 +56,11 @@ for pattern in sorted(nosimd.keys()):
     if pattern in simd:
         ns = nosimd[pattern]
         s = simd[pattern]
-        speedup = ns / s if s > 0 else 0
-        results.append((pattern, ns, s, speedup))
-        total_nosimd += ns
-        total_simd += s
+        if s > 0 and ns > 0:
+            speedup = ns / s
+            results.append((pattern, ns, s, speedup))
+            total_nosimd += ns
+            total_simd += s
 
 # Print results
 for pattern, ns, s, speedup in results:

@@ -153,6 +153,46 @@ std::string generate_test_string(const std::string& pattern, size_t length) {
             result += static_cast<char>('a' + dis(gen));
         }
         return result;
+    } else if (pattern == "[aeiou]*" || pattern == "[aeiou]+") {
+        const char vowels[] = "aeiou";
+        std::uniform_int_distribution<> dis(0, 4);
+        std::string result;
+        for (size_t i = 0; i < length; ++i) {
+            result += vowels[dis(gen)];
+        }
+        return result;
+    } else if (pattern == "[aeiouAEIOU]*") {
+        const char vowels[] = "aeiouAEIOU";
+        std::uniform_int_distribution<> dis(0, 9);
+        std::string result;
+        for (size_t i = 0; i < length; ++i) {
+            result += vowels[dis(gen)];
+        }
+        return result;
+    } else if (pattern == "[02468]*" || pattern == "[02468]+") {
+        const char evens[] = "02468";
+        std::uniform_int_distribution<> dis(0, 4);
+        std::string result;
+        for (size_t i = 0; i < length; ++i) {
+            result += evens[dis(gen)];
+        }
+        return result;
+    } else if (pattern == "[13579]*" || pattern == "[13579]+") {
+        const char odds[] = "13579";
+        std::uniform_int_distribution<> dis(0, 4);
+        std::string result;
+        for (size_t i = 0; i < length; ++i) {
+            result += odds[dis(gen)];
+        }
+        return result;
+    } else if (pattern == "[0-9a-fA-F]*" || pattern == "[0-9a-fA-F]+") {
+        const char hex[] = "0123456789abcdefABCDEF";
+        std::uniform_int_distribution<> dis(0, 21);
+        std::string result;
+        for (size_t i = 0; i < length; ++i) {
+            result += hex[dis(gen)];
+        }
+        return result;
     }
 
     return std::string(length, 'a'); // fallback
@@ -264,6 +304,24 @@ double benchmark_case(const std::string& pattern_str, const std::string& test_st
                 matched = ctre::match<"[0-9]+">(test_string);
             } else if (pattern_str == "[A-Z]+") {
                 matched = ctre::match<"[A-Z]+">(test_string);
+            } else if (pattern_str == "[aeiou]*") {
+                matched = ctre::match<"[aeiou]*">(test_string);
+            } else if (pattern_str == "[aeiou]+") {
+                matched = ctre::match<"[aeiou]+">(test_string);
+            } else if (pattern_str == "[aeiouAEIOU]*") {
+                matched = ctre::match<"[aeiouAEIOU]*">(test_string);
+            } else if (pattern_str == "[02468]*") {
+                matched = ctre::match<"[02468]*">(test_string);
+            } else if (pattern_str == "[02468]+") {
+                matched = ctre::match<"[02468]+">(test_string);
+            } else if (pattern_str == "[13579]*") {
+                matched = ctre::match<"[13579]*">(test_string);
+            } else if (pattern_str == "[13579]+") {
+                matched = ctre::match<"[13579]+">(test_string);
+            } else if (pattern_str == "[0-9a-fA-F]*") {
+                matched = ctre::match<"[0-9a-fA-F]*">(test_string);
+            } else if (pattern_str == "[0-9a-fA-F]+") {
+                matched = ctre::match<"[0-9a-fA-F]+">(test_string);
             } else if (pattern_str == "[0-2]*") {
                 matched = ctre::match<"[0-2]*">(test_string);
             } else if (pattern_str == "[x-z]*") {
@@ -349,6 +407,39 @@ int main() {
         {"[x-z]+_32", "[x-z]+", "Small range x-z plus (32 chars)"},
         {"[a-e]+_32", "[a-e]+", "Small range a-e plus (32 chars)"},
         {"[0-9]+_32", "[0-9]+", "Small range 0-9 plus (32 chars)"},
+        
+        // Mixed ranges
+        {"[a-zA-Z]*_32", "[a-zA-Z]*", "Mixed case star (32 chars)"},
+        {"[a-zA-Z]+_32", "[a-zA-Z]+", "Mixed case plus (32 chars)"},
+        {"[a-zA-Z]*_64", "[a-zA-Z]*", "Mixed case star (64 chars)"},
+        {"[a-zA-Z]+_64", "[a-zA-Z]+", "Mixed case plus (64 chars)"},
+        {"[a-zA-Z]*_128", "[a-zA-Z]*", "Mixed case star (128 chars)"},
+        {"[0-9a-f]*_32", "[0-9a-f]*", "Hex lowercase star (32 chars)"},
+        {"[0-9a-f]+_32", "[0-9a-f]+", "Hex lowercase plus (32 chars)"},
+        {"[0-9a-f]*_64", "[0-9a-f]*", "Hex lowercase star (64 chars)"},
+        {"[0-9a-fA-F]*_32", "[0-9a-fA-F]*", "Hex mixed case star (32 chars)"},
+        {"[0-9a-fA-F]+_32", "[0-9a-fA-F]+", "Hex mixed case plus (32 chars)"},
+        
+        // Sparse character sets (Shufti)
+        {"[aeiou]*_32", "[aeiou]*", "Vowels star (32 chars)"},
+        {"[aeiou]+_32", "[aeiou]+", "Vowels plus (32 chars)"},
+        {"[aeiou]*_64", "[aeiou]*", "Vowels star (64 chars)"},
+        {"[aeiouAEIOU]*_32", "[aeiouAEIOU]*", "All vowels star (32 chars)"},
+        {"[02468]*_32", "[02468]*", "Even digits star (32 chars)"},
+        {"[02468]+_32", "[02468]+", "Even digits plus (32 chars)"},
+        {"[13579]*_32", "[13579]*", "Odd digits star (32 chars)"},
+        {"[13579]+_32", "[13579]+", "Odd digits plus (32 chars)"},
+        
+        // Larger inputs for scaling tests
+        {"[a-z]*_256", "[a-z]*", "Lowercase star (256 chars)"},
+        {"[a-z]+_256", "[a-z]+", "Lowercase plus (256 chars)"},
+        {"[0-9]*_256", "[0-9]*", "Digits star (256 chars)"},
+        {"[0-9]+_256", "[0-9]+", "Digits plus (256 chars)"},
+        {"[A-Z]*_256", "[A-Z]*", "Uppercase star (256 chars)"},
+        {"a*_256", "a*", "Single char a (256 chars)"},
+        {"a+_256", "a+", "Single char a plus (256 chars)"},
+        {"[a-z]*_512", "[a-z]*", "Lowercase star (512 chars)"},
+        {"[a-z]+_512", "[a-z]+", "Lowercase plus (512 chars)"},
     };
 
     // Output CSV format: pattern,time
@@ -363,6 +454,10 @@ int main() {
             length = 64;
         else if (test_case.name.find("_128") != std::string::npos)
             length = 128;
+        else if (test_case.name.find("_256") != std::string::npos)
+            length = 256;
+        else if (test_case.name.find("_512") != std::string::npos)
+            length = 512;
 
         // Generate test string
         std::string test_string = generate_test_string(test_case.pattern, length);
