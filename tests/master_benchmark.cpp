@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <ctre.hpp>
 #include <iomanip>
@@ -5,469 +6,180 @@
 #include <limits>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
-// Test cases for proper CTRE regex patterns
-struct TestCase {
-    std::string name;
-    std::string pattern;
-    std::string description;
-};
-
-// Generate test strings that will match the regex patterns
-std::string generate_test_string(const std::string& pattern, size_t length) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    if (pattern == "a*") {
-        return std::string(length, 'a');
-    } else if (pattern == "A*") {
-        return std::string(length, 'A');
-    } else if (pattern == "b*") {
-        return std::string(length, 'b');
-    } else if (pattern == "z*") {
-        return std::string(length, 'z');
-    } else if (pattern == "9*") {
-        return std::string(length, '9');
-    } else if (pattern == "a+") {
-        return std::string(length, 'a');
-    } else if (pattern == "A+") {
-        return std::string(length, 'A');
-    } else if (pattern == "b+") {
-        return std::string(length, 'b');
-    } else if (pattern == "z+") {
-        return std::string(length, 'z');
-    } else if (pattern == "9+") {
-        return std::string(length, '9');
-    } else if (pattern == "[a-z]*") {
-        std::uniform_int_distribution<> dis('a', 'z');
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>(dis(gen));
-        }
-        return result;
-    } else if (pattern == "[0-9]*") {
-        std::uniform_int_distribution<> dis('0', '9');
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>(dis(gen));
-        }
-        return result;
-    } else if (pattern == "[A-Z]*") {
-        std::uniform_int_distribution<> dis('A', 'Z');
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>(dis(gen));
-        }
-        return result;
-    } else if (pattern == "[a-zA-Z]*") {
-        std::uniform_int_distribution<> dis(0, 51); // 26 lowercase + 26 uppercase
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            int val = dis(gen);
-            result += static_cast<char>((val < 26) ? ('a' + val) : ('A' + val - 26));
-        }
-        return result;
-    } else if (pattern == "[0-9a-f]*") {
-        std::uniform_int_distribution<> dis(0, 15);
-        std::string hex_chars = "0123456789abcdef";
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += hex_chars[dis(gen)];
-        }
-        return result;
-    } else if (pattern == "[a-z]+") {
-        std::uniform_int_distribution<> dis('a', 'z');
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>(dis(gen));
-        }
-        return result;
-    } else if (pattern == "[0-9]+") {
-        std::uniform_int_distribution<> dis('0', '9');
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>(dis(gen));
-        }
-        return result;
-    } else if (pattern == "[A-Z]+") {
-        std::uniform_int_distribution<> dis('A', 'Z');
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>(dis(gen));
-        }
-        return result;
-    } else if (pattern == "[0-2]*") {
-        std::uniform_int_distribution<> dis(0, 2);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('0' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[x-z]*") {
-        std::uniform_int_distribution<> dis(0, 2);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('x' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[a-c]*") {
-        std::uniform_int_distribution<> dis(0, 2);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('a' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[a-e]*") {
-        std::uniform_int_distribution<> dis(0, 4);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('a' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[0-2]+") {
-        std::uniform_int_distribution<> dis(0, 2);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('0' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[x-z]+") {
-        std::uniform_int_distribution<> dis(0, 2);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('x' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[a-c]+") {
-        std::uniform_int_distribution<> dis(0, 2);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('a' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[a-e]+") {
-        std::uniform_int_distribution<> dis(0, 4);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += static_cast<char>('a' + dis(gen));
-        }
-        return result;
-    } else if (pattern == "[aeiou]*" || pattern == "[aeiou]+") {
-        const char vowels[] = "aeiou";
-        std::uniform_int_distribution<> dis(0, 4);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += vowels[dis(gen)];
-        }
-        return result;
-    } else if (pattern == "[aeiouAEIOU]*") {
-        const char vowels[] = "aeiouAEIOU";
-        std::uniform_int_distribution<> dis(0, 9);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += vowels[dis(gen)];
-        }
-        return result;
-    } else if (pattern == "[02468]*" || pattern == "[02468]+") {
-        const char evens[] = "02468";
-        std::uniform_int_distribution<> dis(0, 4);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += evens[dis(gen)];
-        }
-        return result;
-    } else if (pattern == "[13579]*" || pattern == "[13579]+") {
-        const char odds[] = "13579";
-        std::uniform_int_distribution<> dis(0, 4);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += odds[dis(gen)];
-        }
-        return result;
-    } else if (pattern == "[0-9a-fA-F]*" || pattern == "[0-9a-fA-F]+") {
-        const char hex[] = "0123456789abcdefABCDEF";
-        std::uniform_int_distribution<> dis(0, 21);
-        std::string result;
-        for (size_t i = 0; i < length; ++i) {
-            result += hex[dis(gen)];
-        }
-        return result;
-    }
-
-    return std::string(length, 'a'); // fallback
+// Generate test strings that match patterns
+inline std::string gen_repeat(char c, size_t len) {
+    return std::string(len, c);
 }
 
-// Benchmark a single test case
-double benchmark_case(const std::string& pattern_str, const std::string& test_string, int iterations = 1000000) {
-    // Warmup runs to ensure consistent timing
-    for (int warmup = 0; warmup < 10000; ++warmup) {
-        if (pattern_str == "a*") {
-            ctre::match<"a*">(test_string);
-        } else if (pattern_str == "A*") {
-            ctre::match<"A*">(test_string);
-        } else if (pattern_str == "b*") {
-            ctre::match<"b*">(test_string);
-        } else if (pattern_str == "z*") {
-            ctre::match<"z*">(test_string);
-        } else if (pattern_str == "9*") {
-            ctre::match<"9*">(test_string);
-        } else if (pattern_str == "a+") {
-            ctre::match<"a+">(test_string);
-        } else if (pattern_str == "A+") {
-            ctre::match<"A+">(test_string);
-        } else if (pattern_str == "b+") {
-            ctre::match<"b+">(test_string);
-        } else if (pattern_str == "z+") {
-            ctre::match<"z+">(test_string);
-        } else if (pattern_str == "9+") {
-            ctre::match<"9+">(test_string);
-        } else if (pattern_str == "[a-z]*") {
-            ctre::match<"[a-z]*">(test_string);
-        } else if (pattern_str == "[0-9]*") {
-            ctre::match<"[0-9]*">(test_string);
-        } else if (pattern_str == "[A-Z]*") {
-            ctre::match<"[A-Z]*">(test_string);
-        } else if (pattern_str == "[a-zA-Z]*") {
-            ctre::match<"[a-zA-Z]*">(test_string);
-        } else if (pattern_str == "[0-9a-f]*") {
-            ctre::match<"[0-9a-f]*">(test_string);
-        } else if (pattern_str == "[a-z]+") {
-            ctre::match<"[a-z]+">(test_string);
-        } else if (pattern_str == "[0-9]+") {
-            ctre::match<"[0-9]+">(test_string);
-        } else if (pattern_str == "[A-Z]+") {
-            ctre::match<"[A-Z]+">(test_string);
-        } else if (pattern_str == "[0-2]*") {
-            ctre::match<"[0-2]*">(test_string);
-        } else if (pattern_str == "[x-z]*") {
-            ctre::match<"[x-z]*">(test_string);
-        } else if (pattern_str == "[a-c]*") {
-            ctre::match<"[a-c]*">(test_string);
-        } else if (pattern_str == "[a-e]*") {
-            ctre::match<"[a-e]*">(test_string);
-        } else if (pattern_str == "[0-2]+") {
-            ctre::match<"[0-2]+">(test_string);
-        } else if (pattern_str == "[x-z]+") {
-            ctre::match<"[x-z]+">(test_string);
-        } else if (pattern_str == "[a-c]+") {
-            ctre::match<"[a-c]+">(test_string);
-        } else if (pattern_str == "[a-e]+") {
-            ctre::match<"[a-e]+">(test_string);
-        }
+inline std::string gen_range(char start, size_t count, size_t len) {
+    std::string result;
+    for (size_t i = 0; i < len; ++i)
+        result += static_cast<char>(start + (i % count));
+    return result;
+}
+
+inline std::string gen_sparse(const char* chars, size_t char_count, size_t len) {
+    std::string result;
+    for (size_t i = 0; i < len; ++i)
+        result += chars[i % char_count];
+    return result;
+}
+
+// Benchmark a single pattern in isolation (no I-cache thrashing!)
+template<ctll::fixed_string Pattern>
+double benchmark_isolated(const std::string& test_string, int iterations = 100000) {
+    volatile bool result = false;
+
+    // Extended warmup to stabilize CPU frequency and caches
+    for (int i = 0; i < 10000; ++i) {
+        result = ctre::match<Pattern>(test_string);
     }
 
-    // Run multiple timing samples and take the minimum for more reliable results
+    // Run many samples and take minimum (best case = CPU at full speed)
     double min_time = std::numeric_limits<double>::max();
 
-    for (int sample = 0; sample < 5; ++sample) {
+    for (int sample = 0; sample < 10; ++sample) {
         auto start = std::chrono::high_resolution_clock::now();
-        size_t matches = 0;
 
-        // Use appropriate pattern based on string
         for (int i = 0; i < iterations; ++i) {
-            bool matched = false;
-
-            if (pattern_str == "a*") {
-                matched = ctre::match<"a*">(test_string);
-            } else if (pattern_str == "A*") {
-                matched = ctre::match<"A*">(test_string);
-            } else if (pattern_str == "b*") {
-                matched = ctre::match<"b*">(test_string);
-            } else if (pattern_str == "z*") {
-                matched = ctre::match<"z*">(test_string);
-            } else if (pattern_str == "9*") {
-                matched = ctre::match<"9*">(test_string);
-            } else if (pattern_str == "a+") {
-                matched = ctre::match<"a+">(test_string);
-            } else if (pattern_str == "A+") {
-                matched = ctre::match<"A+">(test_string);
-            } else if (pattern_str == "b+") {
-                matched = ctre::match<"b+">(test_string);
-            } else if (pattern_str == "z+") {
-                matched = ctre::match<"z+">(test_string);
-            } else if (pattern_str == "9+") {
-                matched = ctre::match<"9+">(test_string);
-            } else if (pattern_str == "[a-z]*") {
-                matched = ctre::match<"[a-z]*">(test_string);
-            } else if (pattern_str == "[0-9]*") {
-                matched = ctre::match<"[0-9]*">(test_string);
-            } else if (pattern_str == "[A-Z]*") {
-                matched = ctre::match<"[A-Z]*">(test_string);
-            } else if (pattern_str == "[a-zA-Z]*") {
-                matched = ctre::match<"[a-zA-Z]*">(test_string);
-            } else if (pattern_str == "[0-9a-f]*") {
-                matched = ctre::match<"[0-9a-f]*">(test_string);
-            } else if (pattern_str == "[a-z]+") {
-                matched = ctre::match<"[a-z]+">(test_string);
-            } else if (pattern_str == "[0-9]+") {
-                matched = ctre::match<"[0-9]+">(test_string);
-            } else if (pattern_str == "[A-Z]+") {
-                matched = ctre::match<"[A-Z]+">(test_string);
-            } else if (pattern_str == "[aeiou]*") {
-                matched = ctre::match<"[aeiou]*">(test_string);
-            } else if (pattern_str == "[aeiou]+") {
-                matched = ctre::match<"[aeiou]+">(test_string);
-            } else if (pattern_str == "[aeiouAEIOU]*") {
-                matched = ctre::match<"[aeiouAEIOU]*">(test_string);
-            } else if (pattern_str == "[02468]*") {
-                matched = ctre::match<"[02468]*">(test_string);
-            } else if (pattern_str == "[02468]+") {
-                matched = ctre::match<"[02468]+">(test_string);
-            } else if (pattern_str == "[13579]*") {
-                matched = ctre::match<"[13579]*">(test_string);
-            } else if (pattern_str == "[13579]+") {
-                matched = ctre::match<"[13579]+">(test_string);
-            } else if (pattern_str == "[0-9a-fA-F]*") {
-                matched = ctre::match<"[0-9a-fA-F]*">(test_string);
-            } else if (pattern_str == "[0-9a-fA-F]+") {
-                matched = ctre::match<"[0-9a-fA-F]+">(test_string);
-            } else if (pattern_str == "[0-2]*") {
-                matched = ctre::match<"[0-2]*">(test_string);
-            } else if (pattern_str == "[x-z]*") {
-                matched = ctre::match<"[x-z]*">(test_string);
-            } else if (pattern_str == "[a-c]*") {
-                matched = ctre::match<"[a-c]*">(test_string);
-            } else if (pattern_str == "[a-e]*") {
-                matched = ctre::match<"[a-e]*">(test_string);
-            } else if (pattern_str == "[0-2]+") {
-                matched = ctre::match<"[0-2]+">(test_string);
-            } else if (pattern_str == "[x-z]+") {
-                matched = ctre::match<"[x-z]+">(test_string);
-            } else if (pattern_str == "[a-c]+") {
-                matched = ctre::match<"[a-c]+">(test_string);
-            } else if (pattern_str == "[a-e]+") {
-                matched = ctre::match<"[a-e]+">(test_string);
-            }
-
-            if (matched) {
-                matches++;
-            }
+            result = ctre::match<Pattern>(test_string);
         }
 
         auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-        double time_per_match = static_cast<double>(duration.count()) / static_cast<double>(matches);
+        double time_ns = std::chrono::duration<double, std::nano>(end - start).count() / iterations;
 
-        if (time_per_match < min_time) {
-            min_time = time_per_match;
+        if (time_ns < min_time) {
+            min_time = time_ns;
         }
     }
 
     return min_time;
 }
 
+struct BenchResult {
+    const char* name;
+    const char* description;
+    double time_ns;
+};
+
 int main() {
-    // Test cases covering different SIMD optimizations
-    std::vector<TestCase> test_cases = {
-        // Single character repetition (single char SIMD) - star patterns
-        {"a*_16", "a*", "Single char 'a' (16 chars)"},
-        {"a*_32", "a*", "Single char 'a' (32 chars)"},
-        {"a*_64", "a*", "Single char 'a' (64 chars)"},
-        {"a*_128", "a*", "Single char 'a' (128 chars)"},
-        {"A*_32", "A*", "Single char 'A' (32 chars)"},
-        {"b*_32", "b*", "Single char 'b' (32 chars)"},
-        {"z*_32", "z*", "Single char 'z' (32 chars)"},
-        {"9*_32", "9*", "Single char '9' (32 chars)"},
+    constexpr int ITER = 100000;
+    std::vector<BenchResult> results;
 
-        // Single character repetition (single char SIMD) - plus patterns
-        {"a+_16", "a+", "Single char 'a' plus (16 chars)"},
-        {"a+_32", "a+", "Single char 'a' plus (32 chars)"},
-        {"a+_64", "a+", "Single char 'a' plus (64 chars)"},
-        {"a+_128", "a+", "Single char 'a' plus (128 chars)"},
-        {"A+_32", "A+", "Single char 'A' plus (32 chars)"},
-        {"b+_32", "b+", "Single char 'b' plus (32 chars)"},
-        {"z+_32", "z+", "Single char 'z' plus (32 chars)"},
-        {"9+_32", "9+", "Single char '9' plus (32 chars)"},
+    std::cout << "CTRE Master Benchmark (Isolated Testing - No I-cache Interference)\n";
+    std::cout << "====================================================================\n\n";
 
-        // Character class repetition (character class SIMD) - star patterns
-        {"[a-z]*_16", "[a-z]*", "Lowercase range (16 chars)"},
-        {"[a-z]*_32", "[a-z]*", "Lowercase range (32 chars)"},
-        {"[a-z]*_64", "[a-z]*", "Lowercase range (64 chars)"},
-        {"[a-z]*_128", "[a-z]*", "Lowercase range (128 chars)"},
-        {"[A-Z]*_32", "[A-Z]*", "Uppercase range (32 chars)"},
+    // Macro to make benchmarking concise
+    #define BENCH(name, pattern, test_str, desc) \
+        results.push_back({name, desc, benchmark_isolated<pattern>(test_str, ITER)})
 
-        // Character class repetition (character class SIMD) - plus patterns
-        {"[a-z]+_16", "[a-z]+", "Lowercase range plus (16 chars)"},
-        {"[a-z]+_32", "[a-z]+", "Lowercase range plus (32 chars)"},
-        {"[a-z]+_64", "[a-z]+", "Lowercase range plus (64 chars)"},
-        {"[a-z]+_128", "[a-z]+", "Lowercase range plus (128 chars)"},
-        {"[A-Z]+_32", "[A-Z]+", "Uppercase range plus (32 chars)"},
+    // Single character patterns
+    BENCH("a*_32", "a*", gen_repeat('a', 32), "Single char a star");
+    BENCH("b*_32", "b*", gen_repeat('b', 32), "Single char b star");
+    BENCH("z*_32", "z*", gen_repeat('z', 32), "Single char z star");
+    BENCH("9*_32", "9*", gen_repeat('9', 32), "Single char 9 star");
+    BENCH("A*_32", "A*", gen_repeat('A', 32), "Single char A star");
 
-        // Small ranges (small range optimization) - star patterns
-        {"[a-c]*_32", "[a-c]*", "Small range a-c (32 chars)"},
-        {"[0-2]*_32", "[0-2]*", "Small range 0-2 (32 chars)"},
-        {"[x-z]*_32", "[x-z]*", "Small range x-z (32 chars)"},
-        {"[a-e]*_32", "[a-e]*", "Small range a-e (32 chars)"},
-        {"[0-9]*_32", "[0-9]*", "Small range 0-9 (32 chars)"},
+    BENCH("a+_32", "a+", gen_repeat('a', 32), "Single char a plus");
+    BENCH("b+_32", "b+", gen_repeat('b', 32), "Single char b plus");
+    BENCH("z+_32", "z+", gen_repeat('z', 32), "Single char z plus");
+    BENCH("9+_32", "9+", gen_repeat('9', 32), "Single char 9 plus");
+    BENCH("A+_32", "A+", gen_repeat('A', 32), "Single char A plus");
 
-        // Small ranges (small range optimization) - plus patterns
-        {"[a-c]+_32", "[a-c]+", "Small range a-c plus (32 chars)"},
-        {"[0-2]+_32", "[0-2]+", "Small range 0-2 plus (32 chars)"},
-        {"[x-z]+_32", "[x-z]+", "Small range x-z plus (32 chars)"},
-        {"[a-e]+_32", "[a-e]+", "Small range a-e plus (32 chars)"},
-        {"[0-9]+_32", "[0-9]+", "Small range 0-9 plus (32 chars)"},
-        
-        // Mixed ranges
-        {"[a-zA-Z]*_32", "[a-zA-Z]*", "Mixed case star (32 chars)"},
-        {"[a-zA-Z]+_32", "[a-zA-Z]+", "Mixed case plus (32 chars)"},
-        {"[a-zA-Z]*_64", "[a-zA-Z]*", "Mixed case star (64 chars)"},
-        {"[a-zA-Z]+_64", "[a-zA-Z]+", "Mixed case plus (64 chars)"},
-        {"[a-zA-Z]*_128", "[a-zA-Z]*", "Mixed case star (128 chars)"},
-        {"[0-9a-f]*_32", "[0-9a-f]*", "Hex lowercase star (32 chars)"},
-        {"[0-9a-f]+_32", "[0-9a-f]+", "Hex lowercase plus (32 chars)"},
-        {"[0-9a-f]*_64", "[0-9a-f]*", "Hex lowercase star (64 chars)"},
-        {"[0-9a-fA-F]*_32", "[0-9a-fA-F]*", "Hex mixed case star (32 chars)"},
-        {"[0-9a-fA-F]+_32", "[0-9a-fA-F]+", "Hex mixed case plus (32 chars)"},
-        
-        // Sparse character sets (Shufti)
-        {"[aeiou]*_32", "[aeiou]*", "Vowels star (32 chars)"},
-        {"[aeiou]+_32", "[aeiou]+", "Vowels plus (32 chars)"},
-        {"[aeiou]*_64", "[aeiou]*", "Vowels star (64 chars)"},
-        {"[aeiouAEIOU]*_32", "[aeiouAEIOU]*", "All vowels star (32 chars)"},
-        {"[02468]*_32", "[02468]*", "Even digits star (32 chars)"},
-        {"[02468]+_32", "[02468]+", "Even digits plus (32 chars)"},
-        {"[13579]*_32", "[13579]*", "Odd digits star (32 chars)"},
-        {"[13579]+_32", "[13579]+", "Odd digits plus (32 chars)"},
-        
-        // Larger inputs for scaling tests
-        {"[a-z]*_256", "[a-z]*", "Lowercase star (256 chars)"},
-        {"[a-z]+_256", "[a-z]+", "Lowercase plus (256 chars)"},
-        {"[0-9]*_256", "[0-9]*", "Digits star (256 chars)"},
-        {"[0-9]+_256", "[0-9]+", "Digits plus (256 chars)"},
-        {"[A-Z]*_256", "[A-Z]*", "Uppercase star (256 chars)"},
-        {"a*_256", "a*", "Single char a (256 chars)"},
-        {"a+_256", "a+", "Single char a plus (256 chars)"},
-        {"[a-z]*_512", "[a-z]*", "Lowercase star (512 chars)"},
-        {"[a-z]+_512", "[a-z]+", "Lowercase plus (512 chars)"},
-    };
+    // Small ranges (2-5 chars) - Previously showed false slowdowns
+    BENCH("[0-2]*_32", "[0-2]*", gen_range('0', 3, 32), "Tiny range 0-2 star");
+    BENCH("[0-2]+_32", "[0-2]+", gen_range('0', 3, 32), "Tiny range 0-2 plus");
+    BENCH("[a-c]*_32", "[a-c]*", gen_range('a', 3, 32), "Tiny range a-c star");
+    BENCH("[a-c]+_32", "[a-c]+", gen_range('a', 3, 32), "Tiny range a-c plus");
+    BENCH("[a-e]*_32", "[a-e]*", gen_range('a', 5, 32), "Small range a-e star");
+    BENCH("[a-e]+_32", "[a-e]+", gen_range('a', 5, 32), "Small range a-e plus");
+    BENCH("[x-z]*_32", "[x-z]*", gen_range('x', 3, 32), "Tiny range x-z star");
+    BENCH("[x-z]+_32", "[x-z]+", gen_range('x', 3, 32), "Tiny range x-z plus");
 
-    // Output CSV format: pattern,time
-    for (const auto& test_case : test_cases) {
-        // Extract string length from test case name
-        size_t length = 32; // default
-        if (test_case.name.find("_16") != std::string::npos)
-            length = 16;
-        else if (test_case.name.find("_32") != std::string::npos)
-            length = 32;
-        else if (test_case.name.find("_64") != std::string::npos)
-            length = 64;
-        else if (test_case.name.find("_128") != std::string::npos)
-            length = 128;
-        else if (test_case.name.find("_256") != std::string::npos)
-            length = 256;
-        else if (test_case.name.find("_512") != std::string::npos)
-            length = 512;
+    // Medium ranges (9-26 chars) - Should use SIMD
+    BENCH("[0-9]*_32", "[0-9]*", gen_range('0', 10, 32), "Digits star (32)");
+    BENCH("[0-9]+_32", "[0-9]+", gen_range('0', 10, 32), "Digits plus (32)");
+    BENCH("[a-z]*_16", "[a-z]*", gen_range('a', 26, 16), "Lowercase star (16)");
+    BENCH("[a-z]*_32", "[a-z]*", gen_range('a', 26, 32), "Lowercase star (32)");
+    BENCH("[a-z]*_64", "[a-z]*", gen_range('a', 26, 64), "Lowercase star (64)");
+    BENCH("[a-z]*_128", "[a-z]*", gen_range('a', 26, 128), "Lowercase star (128)");
+    BENCH("[a-z]*_256", "[a-z]*", gen_range('a', 26, 256), "Lowercase star (256)");
+    BENCH("[a-z]*_512", "[a-z]*", gen_range('a', 26, 512), "Lowercase star (512)");
 
-        // Generate test string
-        std::string test_string = generate_test_string(test_case.pattern, length);
+    BENCH("[a-z]+_16", "[a-z]+", gen_range('a', 26, 16), "Lowercase plus (16)");
+    BENCH("[a-z]+_32", "[a-z]+", gen_range('a', 26, 32), "Lowercase plus (32)");
+    BENCH("[a-z]+_64", "[a-z]+", gen_range('a', 26, 64), "Lowercase plus (64)");
+    BENCH("[a-z]+_128", "[a-z]+", gen_range('a', 26, 128), "Lowercase plus (128)");
+    BENCH("[a-z]+_256", "[a-z]+", gen_range('a', 26, 256), "Lowercase plus (256)");
+    BENCH("[a-z]+_512", "[a-z]+", gen_range('a', 26, 512), "Lowercase plus (512)");
 
-        // Benchmark
-        double time = benchmark_case(test_case.pattern, test_string, 100000);
+    BENCH("[A-Z]*_32", "[A-Z]*", gen_range('A', 26, 32), "Uppercase star (32)");
+    BENCH("[A-Z]*_256", "[A-Z]*", gen_range('A', 26, 256), "Uppercase star (256)");
+    BENCH("[A-Z]+_32", "[A-Z]+", gen_range('A', 26, 32), "Uppercase plus (32)");
 
-        // Output CSV: pattern,time
-        std::cout << test_case.name << "," << std::fixed << std::setprecision(2) << time << "\n";
+    BENCH("[0-9]*_256", "[0-9]*", gen_range('0', 10, 256), "Digits star (256)");
+    BENCH("[0-9]+_256", "[0-9]+", gen_range('0', 10, 256), "Digits plus (256)");
+
+    // Mixed ranges
+    BENCH("[a-zA-Z]*_32", "[a-zA-Z]*", gen_range('a', 52, 32), "Mixed case star (32)");
+    BENCH("[a-zA-Z]*_64", "[a-zA-Z]*", gen_range('a', 52, 64), "Mixed case star (64)");
+    BENCH("[a-zA-Z]*_128", "[a-zA-Z]*", gen_range('a', 52, 128), "Mixed case star (128)");
+    BENCH("[a-zA-Z]+_32", "[a-zA-Z]+", gen_range('a', 52, 32), "Mixed case plus (32)");
+    BENCH("[a-zA-Z]+_64", "[a-zA-Z]+", gen_range('a', 52, 64), "Mixed case plus (64)");
+
+    // Hex patterns
+    BENCH("[0-9a-f]*_32", "[0-9a-f]*", gen_sparse("0123456789abcdef", 16, 32), "Hex lowercase star (32)");
+    BENCH("[0-9a-f]*_64", "[0-9a-f]*", gen_sparse("0123456789abcdef", 16, 64), "Hex lowercase star (64)");
+    BENCH("[0-9a-f]+_32", "[0-9a-f]+", gen_sparse("0123456789abcdef", 16, 32), "Hex lowercase plus (32)");
+    BENCH("[0-9a-fA-F]*_32", "[0-9a-fA-F]*", gen_sparse("0123456789abcdefABCDEF", 22, 32), "Hex mixed star (32)");
+    BENCH("[0-9a-fA-F]+_32", "[0-9a-fA-F]+", gen_sparse("0123456789abcdefABCDEF", 22, 32), "Hex mixed plus (32)");
+
+    // Sparse character sets (Shufti candidates)
+    BENCH("[aeiou]*_32", "[aeiou]*", gen_sparse("aeiou", 5, 32), "Vowels star (32)");
+    BENCH("[aeiou]*_64", "[aeiou]*", gen_sparse("aeiou", 5, 64), "Vowels star (64)");
+    BENCH("[aeiou]+_32", "[aeiou]+", gen_sparse("aeiou", 5, 32), "Vowels plus (32)");
+    BENCH("[aeiouAEIOU]*_32", "[aeiouAEIOU]*", gen_sparse("aeiouAEIOU", 10, 32), "All vowels star (32)");
+
+    // Sparse digit patterns (poor nibble diversity)
+    BENCH("[02468]*_32", "[02468]*", gen_sparse("02468", 5, 32), "Even digits star (32)");
+    BENCH("[02468]+_32", "[02468]+", gen_sparse("02468", 5, 32), "Even digits plus (32)");
+    BENCH("[13579]*_32", "[13579]*", gen_sparse("13579", 5, 32), "Odd digits star (32)");
+    BENCH("[13579]+_32", "[13579]+", gen_sparse("13579", 5, 32), "Odd digits plus (32)");
+
+    // More sizes for scaling tests
+    BENCH("a*_16", "a*", gen_repeat('a', 16), "Single a star (16)");
+    BENCH("a*_64", "a*", gen_repeat('a', 64), "Single a star (64)");
+    BENCH("a*_128", "a*", gen_repeat('a', 128), "Single a star (128)");
+    BENCH("a*_256", "a*", gen_repeat('a', 256), "Single a star (256)");
+
+    BENCH("a+_16", "a+", gen_repeat('a', 16), "Single a plus (16)");
+    BENCH("a+_64", "a+", gen_repeat('a', 64), "Single a plus (64)");
+    BENCH("a+_128", "a+", gen_repeat('a', 128), "Single a plus (128)");
+    BENCH("a+_256", "a+", gen_repeat('a', 256), "Single a plus (256)");
+
+    #undef BENCH
+
+    // Print results
+    std::cout << std::left << std::setw(25) << "Pattern"
+              << std::right << std::setw(15) << "Time (ns)" << "\n";
+    std::cout << std::string(40, '-') << "\n";
+
+    double total_time = 0.0;
+    for (const auto& r : results) {
+        std::cout << std::left << std::setw(25) << r.name
+                  << std::right << std::setw(15) << std::fixed << std::setprecision(2)
+                  << r.time_ns << "\n";
+        total_time += r.time_ns;
     }
+
+    std::cout << std::string(40, '-') << "\n";
+    std::cout << "Total patterns tested: " << results.size() << "\n";
+    std::cout << "Total time: " << std::fixed << std::setprecision(2) << total_time << " ns\n";
+    std::cout << "Average time per pattern: " << std::fixed << std::setprecision(2)
+              << (total_time / results.size()) << " ns\n";
 
     return 0;
 }

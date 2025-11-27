@@ -13,6 +13,8 @@
 #include "simd_string_matching.hpp"
 #include "simd_repetition.hpp"
 #include "simd_character_classes.hpp"
+#include "simd_shufti.hpp"
+#include "simd_multirange.hpp"
 #include <cstdio>
 #ifndef CTRE_IN_A_MODULE
 #include <iterator>
@@ -352,14 +354,35 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
 			// Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
 			if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>, char>) {
+				// Try multi-range SIMD first (for patterns like [a-zA-Z], [0-9a-fA-F])
+				if constexpr (simd::is_two_range<ContentType>::value || simd::is_three_range<ContentType>::value) {
+					Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
+					if (multirange_result != current) {
+						return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
+					}
+				}
+
+				// Try Shufti for sparse character sets (like [aeiou])
+				if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
+					Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
+					if (shufti_result != current) {
+						return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
+					}
+				}
+
 				// Check range size - balance SIMD overhead vs scalar simplicity
 				if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
 					constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
 					constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
 					constexpr size_t range_size = max_char - min_char + 1;
+					constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
 
-					// Use SIMD only for larger ranges (>5 chars) - small ranges are faster with scalar
-					if constexpr (range_size > 23) {
+					// Gap detection: skip SIMD if char_count < range_size (has gaps)
+					// Note: Multi-range patterns (handled above) won't reach here
+					constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
+
+					// Use SIMD only for larger ranges (>8 chars) WITHOUT gaps
+					if constexpr (!has_gaps && range_size > 8) {
 						if constexpr (simd::is_char_range_set<ContentType>()) {
 							// Only use SIMD for ASCII characters to avoid overflow
 							if constexpr (simd::simd_pattern_trait<ContentType>::is_ascii_range) {
@@ -468,14 +491,35 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
 			// Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
 			if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>, char>) {
+				// Try multi-range SIMD first (for patterns like [a-zA-Z], [0-9a-fA-F])
+				if constexpr (simd::is_two_range<ContentType>::value || simd::is_three_range<ContentType>::value) {
+					Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
+					if (multirange_result != current) {
+						return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
+					}
+				}
+
+				// Try Shufti for sparse character sets (like [aeiou])
+				if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
+					Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
+					if (shufti_result != current) {
+						return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
+					}
+				}
+
 				// Check range size - balance SIMD overhead vs scalar simplicity
 				if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; simd::simd_pattern_trait<ContentType>::max_char; }) {
 					constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
 					constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
 					constexpr size_t range_size = max_char - min_char + 1;
+					constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
 
-					// Use SIMD only for larger ranges (>5 chars) - small ranges are faster with scalar
-					if constexpr (range_size > 5) {
+					// Gap detection: skip SIMD if char_count < range_size (has gaps)
+					// Note: Multi-range patterns (handled above) won't reach here
+					constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
+
+					// Use SIMD only for larger ranges (>8 chars) WITHOUT gaps
+					if constexpr (!has_gaps && range_size > 8) {
 						if constexpr (simd::is_char_range_set<ContentType>()) {
 							// Only use SIMD for ASCII characters to avoid overflow
 							if constexpr (simd::simd_pattern_trait<ContentType>::is_ascii_range) {
