@@ -360,6 +360,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         // Direct comparison: N cmpeq + N or = 2N ops with longer dependency chain (for N>1)
         __m256i min_vec = _mm256_set1_epi8(min_char);
         __m256i max_vec = _mm256_set1_epi8(max_char);
+        const __m256i all_ones = _mm256_set1_epi8(-1); // Cache for testz
 
         // PERF: Fast path for 16-byte inputs - use SSE4.2
         if (has_at_least_bytes(current, last, 16) && !has_at_least_bytes(current, last, 32)) {
@@ -437,11 +438,15 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     result = _mm256_and_si256(ge_min, le_max);
                 }
 
-                int mask = _mm256_movemask_epi8(result);
-                if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+                // PERF: Use testz for faster all-match check
+                __m256i not_result = _mm256_xor_si256(result, all_ones);
+                if (_mm256_testz_si256(not_result, not_result)) {
+                    // All matched!
                     current += 32;
                     count += 32;
                 } else {
+                    // Some mismatch
+                    int mask = _mm256_movemask_epi8(result);
                     int first_mismatch = __builtin_ctz(~mask);
                     current += first_mismatch;
                     count += first_mismatch;
@@ -590,10 +595,13 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     const bool case_insensitive = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(flags);
     const __m256i target_vec = _mm256_set1_epi8(TargetChar);
     const __m256i target_lower_vec = case_insensitive ? _mm256_set1_epi8(TargetChar | 0x20) : target_vec;
+    const __m256i all_ones = _mm256_set1_epi8(-1); // Cache for testz operations
 
     // PERF: Fast path for 16-byte inputs - use SSE4.2 instead of falling back to scalar
-    if (has_at_least_bytes(current, last, 16) && !has_at_least_bytes(current, last, 32)) {
-        // Exactly 16 bytes available - use SSE4.2 for efficiency
+    // Check 32-byte case first (most common) for better branch prediction
+    if (has_at_least_bytes(current, last, 32)) {
+        // Skip 16-byte path, go to 32-byte loop below
+    } else if (has_at_least_bytes(current, last, 16)) {
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i target_vec_128 = _mm_set1_epi8(TargetChar);
         __m128i result;
@@ -606,16 +614,16 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result = _mm_cmpeq_epi8(data, target_vec_128);
         }
 
-        int mask = _mm_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+        // Use testz - check if all match
+        const __m128i ones = _mm_set1_epi8(-1);
+        if (_mm_testz_si128(_mm_xor_si128(result, ones), ones)) {
             current += 16;
             count += 16;
         } else {
-            int first_mismatch = __builtin_ctz(~mask);
-            current += first_mismatch;
-            count += first_mismatch;
+            int mask = _mm_movemask_epi8(result);
+            current += __builtin_ctz(~mask);
+            count += __builtin_ctz(~mask);
         }
-        // Fall through to scalar for any remaining bytes
     }
 
     // Process full 32-byte chunks with bounds checking
@@ -635,11 +643,16 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result = _mm256_cmpeq_epi8(data, target_vec);
         }
 
-        int mask = _mm256_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+        // PERF: Check if all matched without extracting to scalar
+        // testz(~result, ~result) == 1 means all bits in result are set (all matched)
+        __m256i not_result = _mm256_xor_si256(result, all_ones);
+        if (_mm256_testz_si256(not_result, not_result)) {
+            // All matched! Process full 32 bytes
             current += 32;
             count += 32;
         } else {
+            // Some mismatch - find it
+            int mask = _mm256_movemask_epi8(result);
             int first_mismatch = __builtin_ctz(~mask);
             current += first_mismatch;
             count += first_mismatch;
