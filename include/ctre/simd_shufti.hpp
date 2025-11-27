@@ -571,14 +571,13 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
         _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.upper_nibble_table.data())));
     const __m256i lower_lut = _mm256_broadcastsi128_si256(
         _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.lower_nibble_table.data())));
+    const __m256i nibble_mask = _mm256_set1_epi8(0x0F);
 
     while (remaining >= 32) {
         __m256i input = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(p));
 
-        __m256i upper_nibbles = _mm256_srli_epi16(input, 4);
-        upper_nibbles = _mm256_and_si256(upper_nibbles, _mm256_set1_epi8(0x0F));
-
-        __m256i lower_nibbles = _mm256_and_si256(input, _mm256_set1_epi8(0x0F));
+        __m256i upper_nibbles = _mm256_and_si256(_mm256_srli_epi16(input, 4), nibble_mask);
+        __m256i lower_nibbles = _mm256_and_si256(input, nibble_mask);
 
         __m256i upper_matches = _mm256_shuffle_epi8(upper_lut, upper_nibbles);
         __m256i lower_matches = _mm256_shuffle_epi8(lower_lut, lower_nibbles);
@@ -659,14 +658,13 @@ inline bool shufti_find_avx2_double(const unsigned char* p, const unsigned char*
         _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.upper_nibble_table2.data())));
     const __m256i lower_lut2 = _mm256_broadcastsi128_si256(
         _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.lower_nibble_table2.data())));
+    const __m256i nibble_mask = _mm256_set1_epi8(0x0F);
 
     while (remaining >= 32) {
         __m256i input = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(p));
 
-        __m256i upper_nibbles = _mm256_srli_epi16(input, 4);
-        upper_nibbles = _mm256_and_si256(upper_nibbles, _mm256_set1_epi8(0x0F));
-
-        __m256i lower_nibbles = _mm256_and_si256(input, _mm256_set1_epi8(0x0F));
+        __m256i upper_nibbles = _mm256_and_si256(_mm256_srli_epi16(input, 4), nibble_mask);
+        __m256i lower_nibbles = _mm256_and_si256(input, nibble_mask);
 
         __m256i upper_matches1 = _mm256_shuffle_epi8(upper_lut, upper_nibbles);
         __m256i lower_matches1 = _mm256_shuffle_epi8(lower_lut, lower_nibbles);
@@ -962,14 +960,14 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, const EndIterator 
                 _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.upper_nibble_table.data())));
             const __m256i lower_lut = _mm256_broadcastsi128_si256(
                 _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.lower_nibble_table.data())));
+            const __m256i nibble_mask = _mm256_set1_epi8(0x0F);
 
             // Process 32-byte chunks
             while (remaining >= 32 && (MaxCount == 0 || count + 32 <= MaxCount)) {
                 __m256i input = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(p));
 
-                __m256i upper_nibbles = _mm256_srli_epi16(input, 4);
-                upper_nibbles = _mm256_and_si256(upper_nibbles, _mm256_set1_epi8(0x0F));
-                __m256i lower_nibbles = _mm256_and_si256(input, _mm256_set1_epi8(0x0F));
+                __m256i upper_nibbles = _mm256_and_si256(_mm256_srli_epi16(input, 4), nibble_mask);
+                __m256i lower_nibbles = _mm256_and_si256(input, nibble_mask);
 
                 __m256i upper_matches = _mm256_shuffle_epi8(upper_lut, upper_nibbles);
                 __m256i lower_matches = _mm256_shuffle_epi8(lower_lut, lower_nibbles);
