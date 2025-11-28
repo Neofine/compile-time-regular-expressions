@@ -5,7 +5,7 @@
 
 Attempted optimizations:
 1. ✅ 64-byte unrolling for range patterns
-2. ⚠️ 8-byte SSE tail processing  
+2. ⚠️ 8-byte SSE tail processing
 3. ⚠️ Optimize short patterns (suffix_ing)
 4. ❌ Profile-Guided Optimization (PGO)
 
@@ -96,7 +96,7 @@ Pattern: `[a-zA-Z]+ing` with input "fishingfishingfishing" (21 bytes)
 ### Why PGO Failed
 PGO optimizes *absolute performance* of both SIMD and NoSIMD versions:
 - SIMD: 4.71ns → 4.14ns (-12% faster)
-- NoSIMD: 141.12ns → 71.22ns (-50% faster!) 
+- NoSIMD: 141.12ns → 71.22ns (-50% faster!)
 
 **Result:** NoSIMD improves MORE than SIMD, *reducing* the speedup ratio.
 
@@ -211,7 +211,7 @@ Performance can vary 5-10% between runs due to:
 - No regressions from baseline
 
 ### Files Modified (Then Reverted)
-- `include/ctre/simd_character_classes.hpp`: 
+- `include/ctre/simd_character_classes.hpp`:
   - 64-byte range unrolling (neutral)
   - 8-byte tail (regressed)
 
@@ -239,4 +239,3 @@ Performance can vary 5-10% between runs due to:
 - Or focusing on patterns that matter most in production
 
 **Current status is exceptional:** Many patterns at 15-35x, with solid gains across the board!
-
