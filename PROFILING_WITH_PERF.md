@@ -332,4 +332,3 @@ The code is:
 - Hardware changes (AVX-512, better branch predictors)
 
 **For practical purposes: You're already there!** 🚀
-
