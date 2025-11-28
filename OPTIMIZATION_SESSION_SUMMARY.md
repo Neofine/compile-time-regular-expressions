@@ -86,19 +86,19 @@ any_char_range: 14.80x  (wildcard optimization working!)
 
 1. **Single-Char SIMD** - Specialized fast path
    - Result: 4-28x depending on size
-   
+
 2. **Multi-Range SIMD** - Generic N-range handler
    - Result: 6-24x
-   
+
 3. **Shufti Algorithm** - Sparse character sets
    - Result: 6-17x
-   
+
 4. **Wildcard `.` Optimization** - Ultra-fast pointer advance
    - Result: 14-15x
-   
+
 5. **testz/testc Instructions** - Faster all-match checking
    - Result: +4-18% improvement across the board
-   
+
 6. **Negated Range SIMD** - Direct `(< min OR > max)` computation
    - Result: Working (limited by test input size)
 
@@ -250,7 +250,6 @@ Victory:    "10.98x - we crushed the 8x goal!"
 
 ---
 
-**Date:** 2025-11-28  
-**Final Status:** ✅ **10.98x ACHIEVED** (137% of 8x target!)  
+**Date:** 2025-11-28
+**Final Status:** ✅ **10.98x ACHIEVED** (137% of 8x target!)
 **Recommendation:** **SHIP IT!** 🚀
-
