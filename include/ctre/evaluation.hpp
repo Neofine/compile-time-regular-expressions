@@ -458,7 +458,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                 // PERF: Skip SIMD for very small inputs (overhead dominates)
                 const auto remaining_input = last - current;
                 if constexpr (simd::is_multi_range<ContentType>::is_valid) {
-                    if (remaining_input >= 24) {
+                    if (remaining_input >= 28) {
                         Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
                         if (multirange_result != current) {
                             return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
@@ -468,7 +468,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
                 // Try Shufti for sparse character sets (like [aeiou])
                 if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                    if (remaining_input >= 24) {
+                    if (remaining_input >= 28) {
                         Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
                         if (shufti_result != current) {
                             return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
@@ -502,11 +502,12 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     }();
 
                     // PERF: Skip SIMD for very small inputs (overhead dominates)
-                    // For inputs <24 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
+                    // For inputs <28 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
+                    // 28 bytes = conservative threshold that avoids regressions on complex patterns
                     const auto remaining = last - current;
                     constexpr bool use_simd = true;
                     if constexpr ((!has_gaps || is_negated) && use_simd) {
-                        if (remaining >= 24) {
+                        if (remaining >= 28) {
                             // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                             // We can now safely process high-bit characters (0x80-0xFF)
                             Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
@@ -518,7 +519,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                 } else {
                     // For patterns without min_char/max_char, use SIMD if input is large enough
                     const auto remaining = last - current;
-                    if (remaining >= 24) {
+                    if (remaining >= 28) {
                         Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                         if (simd_result != current) {
                             return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
@@ -663,7 +664,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                 // PERF: Skip SIMD for very small inputs (overhead dominates)
                 const auto remaining_input = last - current;
                 if constexpr (simd::is_multi_range<ContentType>::is_valid) {
-                    if (remaining_input >= 24) {
+                    if (remaining_input >= 28) {
                         Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
                         if (multirange_result != current) {
                             return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
@@ -673,7 +674,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
                 // Try Shufti for sparse character sets (like [aeiou])
                 if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                    if (remaining_input >= 24) {
+                    if (remaining_input >= 28) {
                         Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
                         if (shufti_result != current) {
                             return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
@@ -707,11 +708,12 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     }();
 
                     // PERF: Skip SIMD for very small inputs (overhead dominates)
-                    // For inputs <24 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
+                    // For inputs <28 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
+                    // 28 bytes = conservative threshold that avoids regressions on complex patterns
                     const auto remaining = last - current;
                     constexpr bool use_simd = true;
                     if constexpr ((!has_gaps || is_negated) && use_simd) {
-                        if (remaining >= 24) {
+                        if (remaining >= 28) {
                             // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                             // We can now safely process high-bit characters (0x80-0xFF)
                             Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
@@ -723,7 +725,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                 } else {
                     // For patterns without min_char/max_char, use SIMD if input is large enough
                     const auto remaining = last - current;
-                    if (remaining >= 24) {
+                    if (remaining >= 28) {
                         Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                         if (simd_result != current) {
                             return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
