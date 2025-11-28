@@ -279,7 +279,8 @@ inline Iterator match_small_range_direct_avx2(Iterator current, const EndIterato
 
     // Process full 32-byte chunks
     while (current != last) {
-        if (!has_at_least_bytes(current, last, 32)) break;
+        if (!has_at_least_bytes(current, last, 32))
+            break;
 
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
         __m256i result = _mm256_setzero_si256();
@@ -287,19 +288,31 @@ inline Iterator match_small_range_direct_avx2(Iterator current, const EndIterato
         if (case_insensitive) {
             __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
             // Unroll comparisons for each character
-            if (num_chars >= 1) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[0]));
-            if (num_chars >= 2) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[1]));
-            if (num_chars >= 3) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[2]));
-            if (num_chars >= 4) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[3]));
-            if (num_chars >= 5) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[4]));
-            if (num_chars >= 6) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[5]));
+            if (num_chars >= 1)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[0]));
+            if (num_chars >= 2)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[1]));
+            if (num_chars >= 3)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[2]));
+            if (num_chars >= 4)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[3]));
+            if (num_chars >= 5)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[4]));
+            if (num_chars >= 6)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data_lower, char_vecs[5]));
         } else {
-            if (num_chars >= 1) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[0]));
-            if (num_chars >= 2) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[1]));
-            if (num_chars >= 3) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[2]));
-            if (num_chars >= 4) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[3]));
-            if (num_chars >= 5) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[4]));
-            if (num_chars >= 6) result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[5]));
+            if (num_chars >= 1)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[0]));
+            if (num_chars >= 2)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[1]));
+            if (num_chars >= 3)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[2]));
+            if (num_chars >= 4)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[3]));
+            if (num_chars >= 5)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[4]));
+            if (num_chars >= 6)
+                result = _mm256_or_si256(result, _mm256_cmpeq_epi8(data, char_vecs[5]));
         }
 
         int mask = _mm256_movemask_epi8(result);
@@ -330,26 +343,39 @@ inline Iterator match_small_range_direct_sse42(Iterator current, const EndIterat
 
     // Process full 16-byte chunks
     while (current != last) {
-        if (!has_at_least_bytes(current, last, 16)) break;
+        if (!has_at_least_bytes(current, last, 16))
+            break;
 
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i result = _mm_setzero_si128();
 
         if (case_insensitive) {
             __m128i data_lower = _mm_or_si128(data, _mm_set1_epi8(0x20));
-            if (num_chars >= 1) result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[0]));
-            if (num_chars >= 2) result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[1]));
-            if (num_chars >= 3) result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[2]));
-            if (num_chars >= 4) result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[3]));
-            if (num_chars >= 5) result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[4]));
-            if (num_chars >= 6) result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[5]));
+            if (num_chars >= 1)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[0]));
+            if (num_chars >= 2)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[1]));
+            if (num_chars >= 3)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[2]));
+            if (num_chars >= 4)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[3]));
+            if (num_chars >= 5)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[4]));
+            if (num_chars >= 6)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data_lower, char_vecs[5]));
         } else {
-            if (num_chars >= 1) result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[0]));
-            if (num_chars >= 2) result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[1]));
-            if (num_chars >= 3) result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[2]));
-            if (num_chars >= 4) result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[3]));
-            if (num_chars >= 5) result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[4]));
-            if (num_chars >= 6) result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[5]));
+            if (num_chars >= 1)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[0]));
+            if (num_chars >= 2)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[1]));
+            if (num_chars >= 3)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[2]));
+            if (num_chars >= 4)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[3]));
+            if (num_chars >= 5)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[4]));
+            if (num_chars >= 6)
+                result = _mm_or_si128(result, _mm_cmpeq_epi8(data, char_vecs[5]));
         }
 
         int mask = _mm_movemask_epi8(result);
@@ -448,9 +474,9 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 int first_mismatch = __builtin_ctz(~mask);
                 current += first_mismatch;
                 count += first_mismatch;
-                return current;  // Early return: found mismatch
+                return current; // Early return: found mismatch
             }
-            
+
             // Early return if no more data (exact 16-byte input)
             if (__builtin_expect(current >= last, 1)) {
                 return current;
@@ -702,9 +728,9 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             int first_mismatch = __builtin_ctz(~mask);
             current += first_mismatch;
             count += first_mismatch;
-            return current;  // Early return: found mismatch
+            return current; // Early return: found mismatch
         }
-        
+
         // Early return if no more data (exact 16-byte input)
         if (__builtin_expect(current >= last, 1)) {
             return current;
