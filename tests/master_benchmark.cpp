@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <ctre.hpp>
+#include <ctre/bitnfa/integration.hpp>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -59,6 +60,37 @@ double benchmark_isolated(const std::string& test_string, int iterations = 10000
     return min_time;
 }
 
+// Benchmark using BitNFA (for complex patterns with alternations)
+template<ctll::fixed_string Pattern>
+double benchmark_bitnfa(const std::string& test_string, int iterations = 100000) {
+    volatile bool result = false;
+
+    // Extended warmup to stabilize CPU frequency and caches
+    for (int i = 0; i < 10000; ++i) {
+        result = static_cast<bool>(ctre::bitnfa::match_auto<Pattern>(test_string));
+    }
+
+    // Run many samples and take minimum (best case = CPU at full speed)
+    double min_time = std::numeric_limits<double>::max();
+
+    for (int sample = 0; sample < 10; ++sample) {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (int i = 0; i < iterations; ++i) {
+            result = static_cast<bool>(ctre::bitnfa::match_auto<Pattern>(test_string));
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        double time_ns = std::chrono::duration<double, std::nano>(end - start).count() / iterations;
+
+        if (time_ns < min_time) {
+            min_time = time_ns;
+        }
+    }
+
+    return min_time;
+}
+
 struct BenchResult {
     const char* name;
     const char* description;
@@ -75,6 +107,10 @@ int main() {
     // Macro to make benchmarking concise
     #define BENCH(name, pattern, test_str, desc) \
         results.push_back({name, desc, benchmark_isolated<pattern>(test_str, ITER)})
+    
+    // Macro for BitNFA benchmarks (for complex patterns)
+    #define BENCH_BITNFA(name, pattern, test_str, desc) \
+        results.push_back({name, desc, benchmark_bitnfa<pattern>(test_str, ITER)})
 
     // Single character patterns
     BENCH("a*_32", "a*", gen_repeat('a', 32), "Single char a star");
@@ -197,7 +233,7 @@ int main() {
     BENCH("char_literal_32", "[a-z]shing", std::string("fishing"), "Char class + literal: [a-z]shing");
 
     // Alternation - tests branch prediction and multiple literal matching
-    BENCH("alternation_4", "Tom|Sawyer|Huckleberry|Finn", std::string("Tom"), "Alternation: 4 names");
+    BENCH_BITNFA("alternation_4", "Tom|Sawyer|Huckleberry|Finn", std::string("Tom"), "Alternation: 4 names [BitNFA]");
 
     // Complex pattern with negated class
     BENCH("negated_class", "[a-q][^u-z]{13}x", std::string("aabcdefghijklmx"), "Negated char class pattern");
@@ -205,8 +241,8 @@ int main() {
     // Literal with suffix matching
     BENCH("suffix_ing", "[a-zA-Z]+ing", std::string("fishingfishingfishing"), "Suffix matching: *ing");
 
-    // Complex alternation with character classes
-    BENCH("complex_alt", "Huck[a-zA-Z]+|Saw[a-zA-Z]+", std::string("Huckleberry"), "Complex alternation");
+    // Complex alternation with character classes (using BitNFA for better performance)
+    BENCH_BITNFA("complex_alt", "Huck[a-zA-Z]+|Saw[a-zA-Z]+", std::string("Huckleberry"), "Complex alternation [BitNFA]");
 
     // Any character patterns (tests . wildcard)
     BENCH("any_char_group", ".{0,2}(Tom|Sawyer|Huckleberry|Finn)", std::string("xxTom"), "Any char + group");
@@ -219,7 +255,7 @@ int main() {
     BENCH("whitespace_ing", "\\s[a-zA-Z]{0,12}ing\\s", std::string(" fishing "), "Whitespace + char class");
 
     // Complex groups with alternation
-    BENCH("group_alt", "([A-Za-z]awyer|[A-Za-z]inn)\\s", std::string("Sawyer "), "Group alternation");
+    BENCH_BITNFA("group_alt", "([A-Za-z]awyer|[A-Za-z]inn)\\s", std::string("Sawyer "), "Group alternation [BitNFA]");
 
     // Quoted strings with character classes
     BENCH("quoted_str", "[\"'][^\"']{0,30}[?!\\.][\"']", std::string("\"Hello world!\""), "Quoted string pattern");
