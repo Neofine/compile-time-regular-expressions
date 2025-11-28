@@ -10,13 +10,13 @@ import sys
 
 def analyze_pattern(name, pattern):
     """Analyze a regex pattern and determine which CTRE strategy would be used."""
-    
+
     strategies = []
-    
+
     # Single character repetition (a*, a+, z*)
     if re.match(r'^[a-zA-Z][*+]$', pattern):
         return "SIMD Single-Char Repetition (AVX2: 16/32/64-byte fast paths)"
-    
+
     # Single character class repetition ([a-z]*, [0-9]+, [A-Z]*)
     if re.match(r'^\[[a-zA-Z0-9\-]+\][*+]$', pattern):
         char_class = pattern[1:pattern.index(']')]
@@ -26,11 +26,11 @@ def analyze_pattern(name, pattern):
         else:
             # Sparse set like [aeiou]
             return "SIMD Shufti (AVX2: sparse character set matching)"
-    
+
     # Negated class ([^...])
     if '[^' in pattern:
         return "SIMD Negated Range (AVX2: inverted range matching)"
-    
+
     # Alternation (A|B)
     if '|' in pattern:
         alt_count = pattern.count('|') + 1
@@ -39,25 +39,25 @@ def analyze_pattern(name, pattern):
             return f"Glushkov NFA with backtracking ({alt_count} branches, char classes use SIMD)"
         else:
             return f"Glushkov NFA with backtracking ({alt_count} branches)"
-    
+
     # Literal string
     if re.match(r'^[a-zA-Z]+$', pattern):
         return "Literal String (memcmp)"
-    
+
     # Whitespace patterns
     if '\\s' in pattern:
         return "Character Class (\\s) - Scalar with class checking"
-    
+
     # Complex patterns
     return "Glushkov NFA (general purpose, scalar)"
 
 def get_simd_eligibility(pattern):
     """Check if pattern is eligible for SIMD optimization."""
-    
+
     # SIMD is used for repetitions
     if re.search(r'[*+]', pattern):
         return True
-    
+
     return False
 
 def get_input_size_category(name):
@@ -84,14 +84,14 @@ def main():
     print()
     print("This shows which matching strategy CTRE uses for each benchmark pattern.")
     print()
-    
+
     # Parse master_benchmark.cpp to get all patterns
     patterns = {}
-    
+
     try:
         with open('tests/master_benchmark.cpp', 'r') as f:
             content = f.read()
-            
+
             # Find all BENCH() calls
             bench_pattern = r'BENCH\("([^"]+)",\s*"([^"]+)"'
             for match in re.finditer(bench_pattern, content):
@@ -101,25 +101,25 @@ def main():
     except FileNotFoundError:
         print("Error: Could not find tests/master_benchmark.cpp")
         return 1
-    
+
     # Group by strategy
     strategy_groups = {}
-    
+
     for name, pattern in sorted(patterns.items()):
         strategy = analyze_pattern(name, pattern)
         size_cat, size = get_input_size_category(name)
-        
+
         if strategy not in strategy_groups:
             strategy_groups[strategy] = []
-        
+
         strategy_groups[strategy].append((name, pattern, size_cat, size))
-    
+
     # Display grouped by strategy
     print("═" * 72)
     print(" PATTERNS GROUPED BY STRATEGY")
     print("═" * 72)
     print()
-    
+
     # Sort strategies by complexity (SIMD first, then NFA)
     strategy_order = [
         "SIMD Single-Char Repetition",
@@ -130,30 +130,30 @@ def main():
         "Character Class",
         "Glushkov NFA",
     ]
-    
+
     for strat_prefix in strategy_order:
         matching_strategies = [s for s in strategy_groups.keys() if s.startswith(strat_prefix)]
-        
+
         for strategy in sorted(matching_strategies):
             items = strategy_groups[strategy]
             print(f"Strategy: {strategy}")
             print(f"  Count: {len(items)} patterns")
             print()
-            
+
             # Show examples
             for name, pattern, size_cat, size in sorted(items, key=lambda x: x[3]):
                 simd_eligible = get_simd_eligibility(pattern)
                 size_str = f"{size}B" if size > 0 else "var"
-                
+
                 # Check if input is too small for SIMD
                 threshold_note = ""
                 if simd_eligible and size > 0 and size < 28:
                     threshold_note = " ⚠️ (< 28B threshold, falls back to scalar)"
-                
+
                 print(f"    • {name:25} {pattern:30} [{size_str:5}]{threshold_note}")
-            
+
             print()
-    
+
     print()
     print("═" * 72)
     print(" SIMD OPTIMIZATION DETAILS")
@@ -181,7 +181,7 @@ def main():
     print("   → Could use BitNFA (bit-parallel NFA)")
     print("   → Currently: Mostly disabled (regressions on small inputs)")
     print()
-    
+
     print()
     print("═" * 72)
     print(" KEY INSIGHTS")
@@ -202,9 +202,8 @@ def main():
     print("   • Literal strings (use memcmp instead)")
     print("   • Single characters (scalar is fast enough)")
     print()
-    
+
     return 0
 
 if __name__ == '__main__':
     sys.exit(main())
-

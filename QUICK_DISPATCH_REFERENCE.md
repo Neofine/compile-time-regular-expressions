@@ -24,7 +24,7 @@ Shows all 80 patterns grouped by strategy type!
 Check input size:
   • Input < 28 bytes → Scalar Glushkov NFA (overhead > benefit)
   • Input ≥ 28 bytes → SIMD path!
-  
+
 SIMD sub-dispatch:
   • Single char (a*, z+) → match_single_char_repeat_avx2()
   • Range ([a-z]*) → match_char_class_repeat_avx2()
@@ -40,7 +40,7 @@ SIMD sub-dispatch:
 Uses: Glushkov NFA with backtracking
   • Tries each branch sequentially
   • BUT: Character classes inside branches CAN use SIMD!
-  
+
 Example: "Huck[a-zA-Z]+|Saw[a-zA-Z]+"
   • Alternation dispatch: Scalar (char by char)
   • [a-zA-Z]+ parts: SIMD if long enough!
@@ -196,4 +196,3 @@ Literal/Complex → Expect 1.0-1.5x
 - See `DISPATCH_FLOW_VISUAL.md` for complete execution traces
 - See `STRATEGY_DISPATCH_GUIDE.md` for full dispatch logic
 - Run `python3 analyze_strategies.py` for your patterns
-

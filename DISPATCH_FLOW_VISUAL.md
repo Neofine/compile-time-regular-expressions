@@ -23,7 +23,7 @@ COMPILE-TIME:
 RUNTIME FLOW:
   ┌─ evaluation.hpp::evaluate()
   │   ├─ Check: Is repetition? YES
-  │   ├─ Check: sizeof(Content) == 1? YES  
+  │   ├─ Check: sizeof(Content) == 1? YES
   │   ├─ Check: !is_constant_evaluated()? YES
   │   ├─ Check: simd::can_use_simd()? YES
   │   ├─ Check: Is char iterator? YES
@@ -35,7 +35,7 @@ RUNTIME FLOW:
   └─ match_single_char_repeat_avx2():
       ├─ Setup: target_vec = broadcast('a')
       ├─ Check: has >= 16 bytes? YES
-      ├─ Check: has >= 32 bytes? YES  
+      ├─ Check: has >= 32 bytes? YES
       ├─ Check: has >= 64 bytes? YES
       │
       ├─ ENTER 64-BYTE LOOP:
@@ -156,7 +156,7 @@ PERFORMANCE: 0.56 cycle/byte = 40x speedup! 🔥
 
 COMPILE-TIME:
   Parse → select<
-            sequence<character<'H'>, character<'u'>, character<'c'>, 
+            sequence<character<'H'>, character<'u'>, character<'c'>,
                      character<'k'>, repeat<1,0,multi_range...>>,
             sequence<character<'S'>, character<'a'>, character<'w'>,
                      repeat<1,0,multi_range...>>
@@ -218,7 +218,7 @@ SIMD benefit for 16 bytes:
   • Scalar: 16 bytes × 1 cycle/byte = 16 cycles
   • SIMD:   16 bytes / 16 bytes = 1 load + 1 compare = 2 cycles
   • Net benefit: 14 cycles
-  
+
 Total: 6-8 overhead + 2 work = 8-10 cycles
 vs Scalar: 16 cycles
 
@@ -278,24 +278,24 @@ Hence: threshold = 28 bytes (conservative)
 if constexpr (sizeof...(Content) == 1) {
     if (!std::is_constant_evaluated() && simd::can_use_simd()) {
         using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
-        
+
         if constexpr (std::is_same_v<..., char>) {
             const auto remaining_input = last - current;
-            
+
             // Try multi-range
             if constexpr (simd::is_multi_range<ContentType>::is_valid) {
                 if (remaining_input >= 28) {  // ← THE THRESHOLD!
                     return simd::match_multirange_repeat<...>();
                 }
             }
-            
+
             // Try Shufti
             if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
                 if (remaining_input >= 28) {
                     return simd::match_pattern_repeat_shufti<...>();
                 }
             }
-            
+
             // Try generic SIMD
             if constexpr (requires { ...:min_char; ...:max_char; }) {
                 if (remaining >= 28) {
@@ -318,32 +318,32 @@ template <char TargetChar, size_t MinCount, size_t MaxCount, ...>
 inline Iterator match_single_char_repeat_avx2(...) {
     const __m256i target_vec = _mm256_set1_epi8(TargetChar);
     const __m256i all_ones = _mm256_set1_epi8(0xFF);
-    
+
     // 16-byte fast path
-    if (has_at_least_bytes(current, last, 16) && 
+    if (has_at_least_bytes(current, last, 16) &&
         !has_at_least_bytes(current, last, 32)) {
         // Process with SSE4.2 (16 bytes at a time)
         // ← CRITICAL FOR a+_16!
     }
-    
+
     // 32-byte fast path
-    if (has_at_least_bytes(current, last, 32) && 
+    if (has_at_least_bytes(current, last, 32) &&
         !has_at_least_bytes(current, last, 64)) {
         // Process one 32-byte chunk
         // ← CRITICAL FOR a+_32!
     }
-    
+
     // 64-byte loop (main hot path)
     while (has_at_least_bytes(current, last, 64)) {
         // Process 64 bytes per iteration
         // ← BEST PATH FOR a*_256!
     }
-    
+
     // 32-byte tail loop
     while (has_at_least_bytes(current, last, 32)) {
         // Handle remaining 32-byte chunks
     }
-    
+
     // Scalar tail
     for (; current != last; ++current) {
         // Process last few bytes
@@ -363,15 +363,15 @@ This is a SEQUENCE, not a simple repetition!
 Flow:
 1. Match [a-q]: Single character class
    → Scalar (just one char)
-   
+
 2. Match [^u-z]{13}: Negated range, exactly 13 times
    → NOT a flexible repetition (*, +)
    → Can't use optimized SIMD repeat functions
    → Uses scalar loop: 13 iterations
-   
+
 3. Match 'x': Single character
    → Scalar
-   
+
 Total: Mostly scalar, hence only ~1.0x speedup
 ```
 
@@ -387,7 +387,7 @@ Flow:
      But: After "Huck", only ~8 chars left
      → Falls below 28-byte threshold
      → Uses scalar! ⚠️
-   
+
 2. If fails, try branch 2...
 
 Total: Mostly scalar dispatch + short SIMD parts = ~1.7x
@@ -486,4 +486,3 @@ Total: Mostly scalar dispatch + short SIMD parts = ~1.7x
 - NFA patterns: complex_alt, alternation_4 (1.0-1.7x)
 
 **Each is optimized for its category!** 🎯
-

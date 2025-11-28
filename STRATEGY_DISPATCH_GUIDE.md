@@ -39,13 +39,13 @@ evaluation.hpp::evaluate() ← Runtime
 
 ```
 IF pattern is repeat<A, B, Content>:
-  
+
   Runtime checks:
   ✓ Is this constexpr evaluation? → NO (runtime)
   ✓ Is SIMD enabled? → YES
   ✓ Is iterator char*? → YES
   ✓ Is input >= 28 bytes? → ...
-  
+
   IF all YES:
     → Try SIMD optimizations (see below)
   ELSE:
@@ -56,11 +56,11 @@ IF pattern is repeat<A, B, Content>:
 
 ```
 IF pattern is select<A, B, ...>:
-  
+
   → Use Glushkov NFA with backtracking
   → Each branch evaluated recursively
   → Character classes inside branches CAN use SIMD!
-  
+
   Example: "Huck[a-zA-Z]+|Saw[a-zA-Z]+"
     - Alternation dispatch: Glushkov NFA
     - [a-zA-Z]+ parts: SIMD range matching!
@@ -70,7 +70,7 @@ IF pattern is select<A, B, ...>:
 
 ```
 IF pattern is string<'T', 'w', 'a', 'i', 'n'>:
-  
+
   → Use memcmp (or SIMD for long strings)
   → Very fast for fixed strings
 ```
@@ -87,31 +87,31 @@ When a repetition pattern reaches the SIMD decision point in `evaluation.hpp`:
 
 if constexpr (sizeof...(Content) == 1) {  // Single content (not a|b|c)
     if (!std::is_constant_evaluated() && simd::can_use_simd()) {
-        
+
         using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
-        
+
         // Check: Is it char iterator?
         if constexpr (std::is_same_v<..., char>) {
-            
+
             // Check: Is it wildcard (.)?
             if constexpr (std::is_same_v<ContentType, any>) {
                 → Ultra-fast wildcard (just advance pointer!)
             }
-            
+
             // Check: Is input large enough?
             const auto remaining_input = last - current;
             if (remaining_input >= 28) {  // ← THE 28-BYTE THRESHOLD!
-                
+
                 // TRY 1: Multi-range SIMD ([a-zA-Z], [0-9a-fA-F])
                 if constexpr (is_multi_range<ContentType>::is_valid) {
                     → match_multirange_repeat<...>(...)
                 }
-                
+
                 // TRY 2: Shufti SIMD ([aeiou], [02468])
                 if constexpr (should_use_shufti<ContentType>) {
                     → match_pattern_repeat_shufti<...>(...)
                 }
-                
+
                 // TRY 3: Generic range SIMD ([a-z], [0-9])
                 if constexpr (has min_char && max_char) {
                     → match_pattern_repeat_simd<...>(...)
@@ -145,9 +145,9 @@ Runtime flow:
 5. Check: char iterator? YES
 6. Check: Input size? 256 bytes → YES (>= 28)
 7. Check: Is single char? YES
-   
+
    → DISPATCH TO: match_single_char_repeat_avx2()
-   
+
    AVX2 flow:
    a. Check: has >= 32 bytes? YES
    b. Check: has >= 64 bytes? YES
@@ -160,7 +160,7 @@ Runtime flow:
       - Repeat...
    d. Process remaining 32-byte chunks
    e. Process remaining 16 bytes or scalar tail
-   
+
 Result: 52x speedup! (0.1 cycle/byte)
 ```
 
@@ -177,14 +177,14 @@ Runtime flow:
 4. Check: SIMD enabled? YES
 5. Check: char iterator? YES
 6. Check: Input size? 16 bytes → NO (< 28) ⚠️
-   
+
    → FALLBACK TO: Scalar Glushkov NFA
-   
+
 Scalar flow:
    - Loop char by char
    - Compare each to 'a'
    - 16 iterations
-   
+
 Result: Only 1.56x speedup (scalar is slower!)
 ```
 
@@ -201,9 +201,9 @@ Runtime flow:
 4. Check: Is multi-range? NO (single range)
 5. Check: Is sparse (Shufti)? NO (contiguous range)
 6. Check: Has min/max chars? YES (min='a', max='z')
-   
+
    → DISPATCH TO: match_char_class_repeat_avx2()
-   
+
    AVX2 flow:
    a. Create vectors for min='a' and max='z'
    b. Process 64-byte chunks:
@@ -212,7 +212,7 @@ Runtime flow:
       - Uses _mm256_cmpgt_epi8 for range comparison
       - All match! Advance 64 bytes
       - Repeat...
-   
+
 Result: 40x speedup! (0.56 cycle/byte for range check)
 ```
 
@@ -221,7 +221,7 @@ Result: 40x speedup! (0.56 cycle/byte for range check)
 ```
 Pattern: Huck[a-zA-Z]+|Saw[a-zA-Z]+
 Parse → select<
-          sequence<character<'H'>, character<'u'>, character<'c'>, 
+          sequence<character<'H'>, character<'u'>, character<'c'>,
                    character<'k'>, repeat<1,0,char_range<'a','z','A','Z'>>>,
           sequence<character<'S'>, character<'a'>, character<'w'>,
                    repeat<1,0,char_range<'a','z','A','Z'>>>
@@ -238,8 +238,8 @@ Runtime flow:
 3. If first branch fails:
    - Backtrack
    - Try second branch...
-   
-Result: 1.70x speedup (alternation dispatch is slow, 
+
+Result: 1.70x speedup (alternation dispatch is slow,
         but [a-zA-Z]+ parts are SIMD accelerated!)
 ```
 
@@ -266,18 +266,18 @@ For small inputs, this overhead exceeds the benefit!
 **Example:**
 ```
 Pattern: a*_16 (16 bytes)
-  
+
 SIMD path:
   CPUID: 25 cycles
   Setup:  5 cycles
   Dispatch: 3 cycles
   16-byte SIMD load+compare: 2 cycles
   Total: 35 cycles
-  
+
 Scalar path:
   16 char-by-char comparisons: 16 cycles
   Total: 16 cycles
-  
+
 → Scalar wins! (35 vs 16 cycles)
 ```
 
@@ -335,4 +335,3 @@ struct pattern_analysis {
 **Want to see what your pattern uses?**
 
 Run: `python3 analyze_strategies.py`
-
