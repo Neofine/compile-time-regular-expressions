@@ -11,7 +11,7 @@
 
 **Findings:**
 - Cache miss rate: 18% vs 12% (short vs long patterns)
-- Branch miss rate: 1.3% vs 0.5%  
+- Branch miss rate: 1.3% vs 0.5%
 - IPC: 2.84 vs 3.81 (CPU waiting vs busy)
 
 **Conclusion:** Short patterns suffer from cache/branch issues
@@ -34,7 +34,7 @@
 668: jne    19f0                          # Branch if yes
 
 669: cmp    BYTE PTR [rip+0x36b4],0x0    # Check AVX2 detected?
-670: je     1b40                          # Branch if not checked  
+670: je     1b40                          # Branch if not checked
 677: movzx  ebx,BYTE PTR [rip+0x36a6]    # Load AVX2 result
 678: test   bl,bl                         # Test if has AVX2
 679: jne    19f0                          # Branch if yes
@@ -69,14 +69,14 @@
 // AFTER: Cache the FINAL result
 inline int get_simd_capability() {
     static int cached_capability = -1;  // Cache FINAL result
-    
+
     if (__builtin_expect(cached_capability == -1, 0)) {
         // Cold path: detect once
         if (has_avx2()) cached_capability = 2;
         else if (has_sse42()) cached_capability = 1;
         else cached_capability = 0;
     }
-    
+
     return cached_capability;  // Hot path: single load!
 }
 ```
@@ -92,7 +92,7 @@ inline int get_simd_capability() {
 
 **Saved:**
 - 6 memory loads → 1 load
-- 9 branches → 2 branches  
+- 9 branches → 2 branches
 - ~25 cycles → ~3 cycles
 - **Saved: 22 cycles!**
 
@@ -342,4 +342,3 @@ diff old_asm.txt new_asm.txt
 ---
 
 **Remember:** The gold is in the assembly! 💎
-

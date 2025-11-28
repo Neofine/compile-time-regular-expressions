@@ -74,14 +74,14 @@ inline int get_simd_capability() {
     if constexpr (CTRE_SIMD_ENABLED) {
         // Cache the final capability level (not just individual checks)
         static int cached_capability = -1;
-        
+
         if (__builtin_expect(cached_capability == -1, 0)) {
             // Cold path: detect once (skip AVX512 for less overhead)
             if (has_avx2()) cached_capability = 2; // AVX2
             else if (has_sse42()) cached_capability = 1; // SSE4.2
             else cached_capability = 0;
         }
-        
+
         return cached_capability;
     }
     return 0; // No SIMD
