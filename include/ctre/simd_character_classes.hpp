@@ -2,10 +2,10 @@
 #define CTRE__SIMD_CHARACTER_CLASSES__HPP
 
 #include "atoms_characters.hpp"
+#include "concepts.hpp"
 #include "flags_and_modes.hpp"
 #include "simd_detection.hpp"
 #include "simd_repetition.hpp"
-#include "concepts.hpp"
 #include <array>
 #include <immintrin.h>
 #include <type_traits>
