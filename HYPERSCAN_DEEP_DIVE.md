@@ -124,10 +124,10 @@ if (!mask) pos += 16; // Skip entire chunk
 
 ## 🎯 ACTIONABLE OPTIMIZATIONS FOR US
 
-### **Optimization #1: Rose-Style Suffix Literal Search** 
+### **Optimization #1: Rose-Style Suffix Literal Search**
 **Target Pattern**: `suffix_ing` ([a-zA-Z]+ing)
 **Current**: 1.43x
-**Strategy**: 
+**Strategy**:
 1. Search for literal "ing" using SIMD
 2. Verify [a-zA-Z]+ backward from match
 3. Much faster than matching character class repetition
@@ -140,7 +140,7 @@ if (!mask) pos += 16; // Skip entire chunk
 const char* search_suffix_ing(const char* begin, const char* end) {
     // Step 1: Fast SIMD search for "ing"
     const char* pos = simd_search_literal(begin, end, "ing", 3);
-    
+
     while (pos != end) {
         // Step 2: Verify [a-zA-Z]+ before "ing"
         const char* start = pos - 1;
@@ -148,16 +148,16 @@ const char* search_suffix_ing(const char* begin, const char* end) {
             start--;
         }
         start++;
-        
+
         if (start < pos) {
             // Found match: start to pos+3
             return start;
         }
-        
+
         // Continue searching
         pos = simd_search_literal(pos + 1, end, "ing", 3);
     }
-    
+
     return end;
 }
 ```
@@ -235,7 +235,7 @@ const char* search_suffix_ing(const char* begin, const char* end) {
 ### Why We Can't Easily Hit 11x:
 
 1. **Measurement Variance** (±0.7x) masks improvements <7%
-2. **Fundamental Limits**: 
+2. **Fundamental Limits**:
    - Alternations: 1.0x (expected)
    - Literals: 1.0x (expected without massive work)
    - Thermal throttling: Unpredictable
@@ -315,4 +315,3 @@ That's likely our ceiling given:
 - Fundamental pattern limits
 
 **Let's implement Rose and see how far we get!** 🎯
-
