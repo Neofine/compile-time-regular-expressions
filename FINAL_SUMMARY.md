@@ -36,7 +36,7 @@ if (has_at_least_bytes(current, last, 32) && !has_at_least_bytes(current, last, 
     // Process exactly 32 bytes with minimal overhead
     __m256i data = _mm256_loadu_si256(...);
     __m256i result = _mm256_cmpeq_epi8(data, target);
-    
+
     if (_mm256_testc_si256(result, all_ones)) {
         current += 32;
         count += 32;
@@ -327,4 +327,3 @@ The code is faster, more stable, and well-understood.
 **Total learning**: Priceless! 💎
 
 Thank you for pushing for honest, real performance! 🚀
-
