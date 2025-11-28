@@ -56,7 +56,7 @@ if (_mm256_testc_si256(combined, all_ones)) [[likely]] {
 
 **Alternative:**
 ```cpp
-if (_mm256_testc_si256(result1, all_ones) && 
+if (_mm256_testc_si256(result1, all_ones) &&
     _mm256_testc_si256(result2, all_ones)) {
     // Both match
 }
@@ -143,4 +143,3 @@ if (mask == -1) { ... }
 - Find that most micro-opts are needed
 - Keep current balance
 - Document why each is necessary
-
