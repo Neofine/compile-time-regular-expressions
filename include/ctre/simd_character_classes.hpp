@@ -817,6 +817,36 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         }
     }
 
+    // PERF: 32-byte fast path for inputs between 32-63 bytes
+    if (has_at_least_bytes(current, last, 32) && !has_at_least_bytes(current, last, 64)) {
+        __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+        __m256i result;
+
+        if (case_insensitive) {
+            __m256i data_lower = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
+            result = _mm256_cmpeq_epi8(data_lower, target_lower_vec);
+        } else {
+            result = _mm256_cmpeq_epi8(data, target_vec);
+        }
+
+        // PERF: Use testc for faster all-match check
+        if (_mm256_testc_si256(result, all_ones)) {
+            current += 32;
+            count += 32;
+        } else {
+            int mask = _mm256_movemask_epi8(result);
+            int first_mismatch = __builtin_ctz(~mask);
+            current += first_mismatch;
+            count += first_mismatch;
+            return current; // Early return: found mismatch
+        }
+
+        // Early return if no more data (exact 32-byte input)
+        if (__builtin_expect(current >= last, 1)) {
+            return current;
+        }
+    }
+
     // PERF: Process 64-byte chunks when possible (2x unroll reduces loop overhead)
     // Use __builtin_expect to hint that 64+ byte inputs are common
     while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
