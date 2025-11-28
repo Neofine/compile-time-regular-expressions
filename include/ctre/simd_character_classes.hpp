@@ -719,9 +719,10 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     }
 
     // PERF: Process 64-byte chunks when possible (2x unroll reduces loop overhead)
+    // Use __builtin_expect to hint that 64+ byte inputs are common
     while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
-        if (!has_at_least_bytes(current, last, 64)) {
-            break;
+        if (__builtin_expect(!has_at_least_bytes(current, last, 64), 0)) {
+            break;  // Unlikely path for small inputs
         }
 
         __m256i data1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
@@ -739,22 +740,24 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         }
 
         // Check if both chunks match completely
+        // PERF: Hint that full matches are the common case (hot path)
         __m256i all_ones = _mm256_set1_epi8(0xFF);
         bool match1 = _mm256_testc_si256(result1, all_ones);
         bool match2 = _mm256_testc_si256(result2, all_ones);
 
-        if (match1 && match2) {
+        if (__builtin_expect(match1 && match2, 1)) {
+            // Hot path: both chunks match
             current += 64;
             count += 64;
         } else if (match1) {
-            // First chunk matches, check second chunk
+            // First chunk matches, mismatch in second
             int mask2 = _mm256_movemask_epi8(result2);
             int first_mismatch = __builtin_ctz(~mask2);
             current += 32 + first_mismatch;
             count += 32 + first_mismatch;
             break;
         } else {
-            // First chunk has mismatch
+            // Mismatch in first chunk
             int mask1 = _mm256_movemask_epi8(result1);
             int first_mismatch = __builtin_ctz(~mask1);
             current += first_mismatch;
@@ -765,8 +768,8 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
 
     // Process remaining 32-byte chunks
     while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-        if (!has_at_least_bytes(current, last, 32)) {
-            break;
+        if (__builtin_expect(!has_at_least_bytes(current, last, 32), 0)) {
+            break;  // Unlikely for most inputs
         }
 
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
@@ -779,7 +782,8 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result = _mm256_cmpeq_epi8(data, target_vec);
         }
 
-        if (_mm256_testc_si256(result, _mm256_set1_epi8(0xFF))) {
+        // PERF: Hint that full matches are common (hot path)
+        if (__builtin_expect(_mm256_testc_si256(result, _mm256_set1_epi8(0xFF)), 1)) {
             current += 32;
             count += 32;
         } else {
