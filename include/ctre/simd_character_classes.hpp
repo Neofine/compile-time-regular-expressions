@@ -47,8 +47,9 @@ inline Iterator match_single_char_repeat_scalar(Iterator current, const EndItera
 
 // Safe check if we have at least N bytes available
 // Handles different iterator types gracefully
+// C++20: [[nodiscard]] warns if result is ignored
 template <typename Iterator, typename EndIterator>
-inline constexpr bool has_at_least_bytes(Iterator current, EndIterator last, size_t n) {
+[[nodiscard]] inline constexpr bool has_at_least_bytes(Iterator current, EndIterator last, size_t n) noexcept {
     // For pointers, we can directly compute distance
     if constexpr (std::is_pointer_v<Iterator>) {
         return static_cast<size_t>(last - current) >= n;
@@ -478,7 +479,8 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             }
 
             // Early return if no more data (exact 16-byte input)
-            if (__builtin_expect(current >= last, 1)) {
+            // C++20: [[likely]] attribute (cleaner than __builtin_expect)
+            if (current >= last) [[likely]] {
                 return current;
             }
         }
@@ -487,7 +489,8 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         const __m256i all_ones = _mm256_set1_epi8(0xFF);
 
         while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
-            if (__builtin_expect(!has_at_least_bytes(current, last, 64), 0)) {
+            // C++20: [[unlikely]] for rare branch (cleaner syntax)
+            if (!has_at_least_bytes(current, last, 64)) [[unlikely]] {
                 break; // Unlikely path for small inputs
             }
 
@@ -540,11 +543,12 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             // PERF: Combine results first, then check (better ILP + fewer testc calls)
             __m256i combined = _mm256_and_si256(result1, result2);
 
-            if (__builtin_expect(_mm256_testc_si256(combined, all_ones), 1)) {
-                // Hot path: both chunks match (single testc check!)
-                current += 64;
-                count += 64;
-            } else {
+        // C++20: [[likely]] for hot path
+        if (_mm256_testc_si256(combined, all_ones)) [[likely]] {
+            // Hot path: both chunks match (single testc check!)
+            current += 64;
+            count += 64;
+        } else {
                 // Slow path: Determine which chunk failed
                 if (_mm256_testc_si256(result1, all_ones)) {
                     // First chunk matches, mismatch in second
@@ -812,7 +816,8 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         }
 
         // Early return if no more data (exact 16-byte input)
-        if (__builtin_expect(current >= last, 1)) {
+        // C++20: [[likely]] attribute
+        if (current >= last) [[likely]] {
             return current;
         }
     }
@@ -842,15 +847,16 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         }
 
         // Early return if no more data (exact 32-byte input)
-        if (__builtin_expect(current >= last, 1)) {
+        // C++20: [[likely]] for common case
+        if (current >= last) [[likely]] {
             return current;
         }
     }
 
     // PERF: Process 64-byte chunks when possible (2x unroll reduces loop overhead)
-    // Use __builtin_expect to hint that 64+ byte inputs are common
+    // C++20: Use [[unlikely]] for better branch prediction
     while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
-        if (__builtin_expect(!has_at_least_bytes(current, last, 64), 0)) {
+        if (!has_at_least_bytes(current, last, 64)) [[unlikely]] {
             break; // Unlikely path for small inputs
         }
 
@@ -872,7 +878,8 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         // This saves one testc instruction in the hot path (both match)
         __m256i combined = _mm256_and_si256(result1, result2);
 
-        if (__builtin_expect(_mm256_testc_si256(combined, all_ones), 1)) {
+        // C++20: [[likely]] for hot path optimization
+        if (_mm256_testc_si256(combined, all_ones)) [[likely]] {
             // Hot path: both chunks match (single testc check!)
             current += 64;
             count += 64;
@@ -897,7 +904,8 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
 
     // Process remaining 32-byte chunks
     while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-        if (__builtin_expect(!has_at_least_bytes(current, last, 32), 0)) {
+        // C++20: [[unlikely]] for uncommon branch
+        if (!has_at_least_bytes(current, last, 32)) [[unlikely]] {
             break; // Unlikely for most inputs
         }
 
@@ -912,7 +920,8 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         }
 
         // PERF: Hint that full matches are common (hot path)
-        if (__builtin_expect(_mm256_testc_si256(result, all_ones), 1)) {
+        // C++20: [[likely]] for expected case
+        if (_mm256_testc_si256(result, all_ones)) [[likely]] {
             current += 32;
             count += 32;
         } else {

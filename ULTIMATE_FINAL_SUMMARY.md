@@ -18,7 +18,7 @@
 
 ### Phase 3: Assembly Analysis - Missing 32-Byte Fast Path (+9%)
 - **Discovery**: Had fast paths for 16 and 64 bytes, but NOT 32!
-- **Implementation**: Added dedicated 32-byte fast path  
+- **Implementation**: Added dedicated 32-byte fast path
 - **Results**: 9.85x → 10.47x (best runs)
 - **Star achievement**: a+_32: 5.78x → 30.80x (+433%!)
 
@@ -232,7 +232,7 @@
 ### By Pattern Type:
 ```
 Single char (a*):        1-52x   ✅ Excellent (size-dependent)
-Range ([a-z]):           19-39x  ✅ Excellent  
+Range ([a-z]):           19-39x  ✅ Excellent
 Multi-range ([a-zA-Z]):  18-19x  ✅ Very good
 Alternations:            1.0-1.2x ⚠️ Expected (no benefit)
 Literals:                1.0-1.6x ⚠️ Expected (no repetition)
@@ -338,4 +338,3 @@ Complex patterns:        0.5-2.0x ⚠️ Varies (some regress)
 - ✅ Hyperscan technique tests
 
 **THE JOURNEY IS COMPLETE!** 🎉🎉🎉
-

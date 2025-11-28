@@ -3,7 +3,6 @@
 
 #include <immintrin.h>
 #include <type_traits>
-#include <cstddef> // for std::size_t
 
 namespace ctre {
 namespace simd {
@@ -16,16 +15,14 @@ namespace simd {
 #define CTRE_SIMD_ENABLED 0
 #endif
 
-// C++20: consteval ensures compile-time evaluation only
-// Detect if SIMD optimizations are enabled at compile-time
-[[nodiscard]] consteval bool can_use_simd() noexcept {
+// Detect if we can use SIMD at runtime
+// Note: This will be called from evaluation.hpp with proper constexpr checks
+constexpr bool can_use_simd() {
     return CTRE_SIMD_ENABLED;
 }
 
 // SIMD instruction set detection
-// C++20: [[nodiscard]] warns if return value is ignored
-// noexcept guarantees no exceptions for better optimization
-[[nodiscard]] inline bool has_avx2() noexcept {
+inline bool has_avx2() {
     static bool detected = false;
     static bool result = false;
 
@@ -40,7 +37,7 @@ namespace simd {
     return result;
 }
 
-[[nodiscard]] inline bool has_avx512f() noexcept {
+inline bool has_avx512f() {
     static bool detected = false;
     static bool result = false;
 
@@ -55,7 +52,7 @@ namespace simd {
     return result;
 }
 
-[[nodiscard]] inline bool has_sse42() noexcept {
+inline bool has_sse42() {
     static bool detected = false;
     static bool result = false;
 
@@ -73,14 +70,12 @@ namespace simd {
 // Choose the best available SIMD instruction set
 // PERF: Cache the final result to avoid repeated function calls (saves ~25 cycles per call!)
 // PERF: Skip AVX512 check - adds overhead and most systems don't have it
-// C++20: [[nodiscard]] + noexcept for better optimization
-[[nodiscard]] inline int get_simd_capability() noexcept {
+inline int get_simd_capability() {
     if constexpr (CTRE_SIMD_ENABLED) {
         // Cache the final capability level (not just individual checks)
         static int cached_capability = -1;
 
-        // C++20: [[unlikely]] replaces __builtin_expect for cold path
-        if (cached_capability == -1) [[unlikely]] {
+        if (__builtin_expect(cached_capability == -1, 0)) {
             // Cold path: detect once (skip AVX512 for less overhead)
             if (has_avx2()) cached_capability = 2; // AVX2
             else if (has_sse42()) cached_capability = 1; // SSE4.2
@@ -92,16 +87,15 @@ namespace simd {
     return 0; // No SIMD
 }
 
-// C++20: Use inline constexpr for better ODR compliance
 // SIMD capability levels
-inline constexpr int SIMD_CAPABILITY_NONE = 0;
-inline constexpr int SIMD_CAPABILITY_SSE42 = 1;
-inline constexpr int SIMD_CAPABILITY_AVX2 = 2;
-inline constexpr int SIMD_CAPABILITY_AVX512F = 3;
+constexpr int SIMD_CAPABILITY_NONE = 0;
+constexpr int SIMD_CAPABILITY_SSE42 = 1;
+constexpr int SIMD_CAPABILITY_AVX2 = 2;
+constexpr int SIMD_CAPABILITY_AVX512F = 3;
 
-// SIMD optimization thresholds  
-inline constexpr std::size_t SIMD_STRING_THRESHOLD = 16;
-inline constexpr std::size_t SIMD_REPETITION_THRESHOLD = 32;
+// SIMD optimization thresholds
+constexpr size_t SIMD_STRING_THRESHOLD = 16;
+constexpr size_t SIMD_REPETITION_THRESHOLD = 32;
 
 } // namespace simd
 } // namespace ctre
