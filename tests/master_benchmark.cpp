@@ -232,8 +232,8 @@ int main() {
     // Character class + literals - tests SIMD + literal combo
     BENCH("char_literal_32", "[a-z]shing", std::string("fishing"), "Char class + literal: [a-z]shing");
 
-    // Alternation - tests branch prediction and multiple literal matching
-    BENCH_BITNFA("alternation_4", "Tom|Sawyer|Huckleberry|Finn", std::string("Tom"), "Alternation: 4 names [BitNFA]");
+    // Alternation - tests branch prediction and multiple literal matching (CTRE compile-time opts it away!)
+    BENCH("alternation_4", "Tom|Sawyer|Huckleberry|Finn", std::string("Tom"), "Alternation: 4 names");
 
     // Complex pattern with negated class
     BENCH("negated_class", "[a-q][^u-z]{13}x", std::string("aabcdefghijklmx"), "Negated char class pattern");
@@ -255,7 +255,7 @@ int main() {
     BENCH("whitespace_ing", "\\s[a-zA-Z]{0,12}ing\\s", std::string(" fishing "), "Whitespace + char class");
 
     // Complex groups with alternation
-    BENCH_BITNFA("group_alt", "([A-Za-z]awyer|[A-Za-z]inn)\\s", std::string("Sawyer "), "Group alternation [BitNFA]");
+    BENCH("group_alt", "([A-Za-z]awyer|[A-Za-z]inn)\\s", std::string("Sawyer "), "Group alternation");
 
     // Quoted strings with character classes
     BENCH("quoted_str", "[\"'][^\"']{0,30}[?!\\.][\"']", std::string("\"Hello world!\""), "Quoted string pattern");
