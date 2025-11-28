@@ -5,6 +5,7 @@
 #include "flags_and_modes.hpp"
 #include "simd_detection.hpp"
 #include "simd_repetition.hpp"
+#include "concepts.hpp"
 #include <array>
 #include <immintrin.h>
 #include <type_traits>
@@ -46,22 +47,20 @@ inline Iterator match_single_char_repeat_scalar(Iterator current, const EndItera
 // ============================================================================
 
 // Safe check if we have at least N bytes available
-// Handles different iterator types gracefully
-// C++20: [[nodiscard]] warns if result is ignored
+// C++20: Uses concepts for cleaner type constraints
 template <typename Iterator, typename EndIterator>
-[[nodiscard]] inline constexpr bool has_at_least_bytes(Iterator current, EndIterator last, size_t n) noexcept {
-    // For pointers, we can directly compute distance
-    if constexpr (std::is_pointer_v<Iterator>) {
-        return static_cast<size_t>(last - current) >= n;
+    requires CharIterator<Iterator> && Subtractable<EndIterator>
+[[nodiscard]] inline constexpr bool has_at_least_bytes(Iterator current, EndIterator last, std::size_t n) noexcept {
+    // For pointers (best case), direct computation
+    if constexpr (PointerIterator<Iterator>) {
+        return static_cast<std::size_t>(last - current) >= n;
     }
-    // For iterators that support operator-, use it
-    else if constexpr (requires {
-                           { last - current } -> std::convertible_to<std::ptrdiff_t>;
-                       }) {
-        auto dist = last - current;
-        return dist >= 0 && static_cast<size_t>(dist) >= n;
+    // For subtractable iterators, compute distance
+    else if constexpr (Subtractable<Iterator>) {
+        const auto dist = last - current;
+        return dist >= 0 && static_cast<std::size_t>(dist) >= n;
     }
-    // Conservative fallback: assume we don't have enough
+    // Conservative fallback
     else {
         return false;
     }
@@ -543,12 +542,12 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             // PERF: Combine results first, then check (better ILP + fewer testc calls)
             __m256i combined = _mm256_and_si256(result1, result2);
 
-        // C++20: [[likely]] for hot path
-        if (_mm256_testc_si256(combined, all_ones)) [[likely]] {
-            // Hot path: both chunks match (single testc check!)
-            current += 64;
-            count += 64;
-        } else {
+            // C++20: [[likely]] for hot path
+            if (_mm256_testc_si256(combined, all_ones)) [[likely]] {
+                // Hot path: both chunks match (single testc check!)
+                current += 64;
+                count += 64;
+            } else {
                 // Slow path: Determine which chunk failed
                 if (_mm256_testc_si256(result1, all_ones)) {
                     // First chunk matches, mismatch in second
