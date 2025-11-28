@@ -417,16 +417,17 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
             // Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
             if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>,
                                          char>) {
-                
+
                 // PERF: Special case for 'any' (wildcard .) - ultra-fast advance!
                 if constexpr (std::is_same_v<ContentType, any>) {
                     size_t count = 0;
                     Iterator start = current;
-                    
+
                     if (multiline_mode(f)) {
                         // In multiline: skip all non-\n characters
                         while (current != last && (B == 0 || count < B)) {
-                            if (*current == '\n') break;
+                            if (*current == '\n')
+                                break;
                             ++current;
                             ++count;
                         }
@@ -444,14 +445,14 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                             }
                         }
                     }
-                    
+
                     if (count >= A) {
                         return evaluate(begin, current, last, consumed_something(f), captures, ctll::list<Tail...>());
                     } else {
                         return not_matched;
                     }
                 }
-                
+
                 // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
                 // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
                 if constexpr (simd::is_multi_range<ContentType>::is_valid) {
@@ -609,16 +610,17 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
             // Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
             if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>,
                                          char>) {
-                
+
                 // PERF: Special case for 'any' (wildcard .) - ultra-fast advance!
                 if constexpr (std::is_same_v<ContentType, any>) {
                     size_t count = 0;
                     Iterator start = current;
-                    
+
                     if (multiline_mode(f)) {
                         // In multiline: skip all non-\n characters
                         while (current != last && (B == 0 || count < B)) {
-                            if (*current == '\n') break;
+                            if (*current == '\n')
+                                break;
                             ++current;
                             ++count;
                         }
@@ -636,7 +638,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                             }
                         }
                     }
-                    
+
                     if (count >= A) {
                         return evaluate(begin, current, last, consumed_something(f), captures, ctll::list<Tail...>());
                     } else {

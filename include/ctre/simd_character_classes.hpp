@@ -180,6 +180,12 @@ struct is_char_range_set_trait<character<C>> : std::true_type {
     using type = std::true_type;
 };
 
+// CRITICAL: Add support for negated ranges to enable SIMD!
+template <char A, char B>
+struct is_char_range_set_trait<negative_set<char_range<A, B>>> : std::true_type {
+    using type = std::true_type;
+};
+
 template <typename T>
 constexpr bool is_char_range_set() {
     return is_char_range_set_trait<T>::value;
