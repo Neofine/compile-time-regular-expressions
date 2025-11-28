@@ -107,7 +107,7 @@ int main() {
     // Macro to make benchmarking concise
     #define BENCH(name, pattern, test_str, desc) \
         results.push_back({name, desc, benchmark_isolated<pattern>(test_str, ITER)})
-    
+
     // Macro for BitNFA benchmarks (for complex patterns)
     #define BENCH_BITNFA(name, pattern, test_str, desc) \
         results.push_back({name, desc, benchmark_bitnfa<pattern>(test_str, ITER)})
