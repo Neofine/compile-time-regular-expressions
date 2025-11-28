@@ -485,7 +485,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
 
         // PERF: Process 64-byte chunks with interleaved scheduling (same as single-char)
         const __m256i all_ones = _mm256_set1_epi8(0xFF);
-        
+
         while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
             if (__builtin_expect(!has_at_least_bytes(current, last, 64), 0)) {
                 break; // Unlikely path for small inputs
@@ -539,7 +539,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
 
             // PERF: Combine results first, then check (better ILP + fewer testc calls)
             __m256i combined = _mm256_and_si256(result1, result2);
-            
+
             if (__builtin_expect(_mm256_testc_si256(combined, all_ones), 1)) {
                 // Hot path: both chunks match (single testc check!)
                 current += 64;
@@ -841,7 +841,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         // PERF: Combine results first, then check (better ILP + fewer testc calls)
         // This saves one testc instruction in the hot path (both match)
         __m256i combined = _mm256_and_si256(result1, result2);
-        
+
         if (__builtin_expect(_mm256_testc_si256(combined, all_ones), 1)) {
             // Hot path: both chunks match (single testc check!)
             current += 64;

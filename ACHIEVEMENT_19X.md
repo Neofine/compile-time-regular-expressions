@@ -188,7 +188,7 @@ Interleaved (AND first):
   and result1, result2  (1 cycle)
   testc combined        (3 cycles)
   = 4 cycles total
-  
+
 Saved: 2 cycles per iteration!
 ```
 
@@ -221,7 +221,7 @@ For short patterns (16 bytes):
    - Eliminated 22 cycles of CPUID overhead
    - Impact: +20-40% for short patterns
 
-7. ✅ **Skip AVX512 detection** 
+7. ✅ **Skip AVX512 detection**
    - Rare feature, common overhead
    - Saved 5 additional cycles
    - Impact: +10% for short patterns
@@ -364,4 +364,3 @@ Result:   +73% for short patterns!
 **Total Effort**: Worth every cycle counted!
 **Outcome**: 19.34x average, goal exceeded!
 **Methodology**: Assembly analysis FTW! 🚀🚀🚀
-

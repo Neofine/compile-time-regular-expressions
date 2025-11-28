@@ -13,7 +13,7 @@
 ### The Grinding Phase (13.15x → 14.98x)
 1. **Branch hints & early returns**: 13.15x
 2. **Profiling attempts**: 13.20x (stuck!)
-3. **🔬 DEEP ASSEMBLY BREAKTHROUGH**: 
+3. **🔬 DEEP ASSEMBLY BREAKTHROUGH**:
    - CPUID caching: 14.52x (+10%)
    - Remove AVX512 check: 15.08x (+4%)
 4. **Current**: 14.98x (variance-adjusted)
@@ -47,7 +47,7 @@ Total: 9 memory loads, 9 branches, ~25 cycles
 
 **For 16-byte pattern:**
 - SIMD work: 2 cycles
-- CPUID overhead: 25 cycles  
+- CPUID overhead: 25 cycles
 - Other: 38 cycles
 - **Ratio: 32:1 overhead/work** ❌
 
@@ -272,7 +272,7 @@ Sequence (.*ing):     2.5x    ⚠️ Limited (fundamental)
 
 ### The Power of Deep Analysis
 ```
-Surface profiling:  "Something's slow" 
+Surface profiling:  "Something's slow"
 Assembly analysis:  "Line 682 wastes 25 cycles in CPUID"
 Result:             2x faster for short patterns!
 ```
@@ -316,4 +316,3 @@ Result:             2x faster for short patterns!
 **Total Development Effort**: Worth it!
 **Outcome**: 15x average, goal exceeded!
 **Methodology**: Assembly analysis FTW! 🚀
-
