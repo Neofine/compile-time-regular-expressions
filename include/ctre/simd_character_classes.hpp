@@ -448,6 +448,12 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 int first_mismatch = __builtin_ctz(~mask);
                 current += first_mismatch;
                 count += first_mismatch;
+                return current;  // Early return: found mismatch
+            }
+            
+            // Early return if no more data (exact 16-byte input)
+            if (__builtin_expect(current >= last, 1)) {
+                return current;
             }
         }
 
