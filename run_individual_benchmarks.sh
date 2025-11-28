@@ -2,12 +2,13 @@
 
 cd /root/compile-time-regular-expressions
 
-echo "Compiling and running 81 individual benchmarks..."
-echo "Each binary will be small (< 32KB) to avoid I-cache issues"
+echo "Compiling and running individual benchmarks..."
+echo "Using @@ delimiter to handle patterns with special chars"
 echo ""
 
 # Create results directory
 mkdir -p results/individual
+rm -f results/individual/all_results.txt
 
 # Compile and run each benchmark
 total=0
@@ -18,7 +19,7 @@ for bench_file in tests/individual_benchmarks/*_bench.cpp; do
     name=$(basename "$bench_file" _bench.cpp)
     
     # Compile SIMD version
-    if g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 -flto \
+    if g++ -std=c++20 -Iinclude -O3 -march=native -mavx2 \
         "$bench_file" -o "/tmp/${name}_simd" 2>/dev/null; then
         
         # Compile NoSIMD version
@@ -29,17 +30,18 @@ for bench_file in tests/individual_benchmarks/*_bench.cpp; do
             simd_result=$(/tmp/${name}_simd)
             nosimd_result=$(/tmp/${name}_nosimd)
             
-            # Parse results
-            simd_time=$(echo "$simd_result" | cut -d'|' -f3)
-            nosimd_time=$(echo "$nosimd_result" | cut -d'|' -f3)
+            # Parse results using @@ delimiter
+            simd_time=$(echo "$simd_result" | awk -F'@@' '{print $3}')
+            nosimd_time=$(echo "$nosimd_result" | awk -F'@@' '{print $3}')
             
-            # Calculate speedup
-            speedup=$(echo "scale=2; $nosimd_time / $simd_time" | bc)
+            # Calculate speedup using awk (more robust than bc)
+            speedup=$(awk -v n="$nosimd_time" -v s="$simd_time" 'BEGIN {printf "%.2f", n/s}')
             
-            echo "$simd_result|$nosimd_time|${speedup}x" >> results/individual/all_results.txt
+            # Save with @@ delimiter
+            echo "${simd_result}@@${nosimd_time}@@${speedup}x" >> results/individual/all_results.txt
             success=$((success + 1))
             
-            printf "\r[%d/%d] %s: %.2fx" $success $total "$name" $speedup
+            printf "\r[%d/%d] %s: %sx" $success $total "$name" "$speedup"
         fi
     fi
 done
@@ -52,43 +54,43 @@ echo ""
 # Display summary
 echo "Summary of Individual Benchmarks:"
 echo "=================================="
-awk -F'|' '{
+awk -F'@@' '{
     name=$1
     pattern=$2  
     simd=$3
+    desc=$4
     nosimd=$5
     speedup=$6
     
     gsub(/x$/, "", speedup)
     
-    printf "%-40s %8.2f ns  %8.2f ns  %8s\n", name, simd, nosimd, speedup
+    printf "%-40s %8.2f ns  %8.2f ns  %8sx\n", name, simd, nosimd, speedup
 }' results/individual/all_results.txt | sort -t' ' -k6 -n | tail -20
 
 echo ""
 echo "Bottom 10 (slowest speedups):"
-awk -F'|' '{
+awk -F'@@' '{
     gsub(/x$/, "", $6)
-    print $0
-}' results/individual/all_results.txt | sort -t'|' -k6 -n | head -10 | \
-awk -F'|' '{printf "%-30s %6s\n", $1, $6"x"}'
+    printf "%s|%.2f\n", $1, $6
+}' results/individual/all_results.txt | sort -t'|' -k2 -n | head -10 | \
+awk -F'|' '{printf "%-40s %6.2fx\n", $1, $2}'
 
 echo ""
 echo "Top 10 (best speedups):"
-awk -F'|' '{
+awk -F'@@' '{
     gsub(/x$/, "", $6)
-    print $0
-}' results/individual/all_results.txt | sort -t'|' -k6 -n | tail -10 | \
-awk -F'|' '{printf "%-30s %6s\n", $1, $6"x"}'
+    printf "%s|%.2f\n", $1, $6
+}' results/individual/all_results.txt | sort -t'|' -k2 -n | tail -10 | \
+awk -F'|' '{printf "%-40s %6.2fx\n", $1, $2}'
 
-# Calculate overall speedup
+# Calculate overall average speedup
 echo ""
-awk -F'|' '{
-    simd_sum += $3
-    nosimd_sum += $5
+awk -F'@@' '{
+    gsub(/x$/, "", $6)
+    sum += $6
     count++
 }
 END {
-    overall = nosimd_sum / simd_sum
-    printf "Overall Speedup: %.2fx (%d patterns)\n", overall, count
+    avg = sum / count
+    printf "Overall Average Speedup: %.2fx (%d patterns)\n", avg, count
 }' results/individual/all_results.txt
-
