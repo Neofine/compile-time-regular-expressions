@@ -417,6 +417,41 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
             // Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
             if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>,
                                          char>) {
+                
+                // PERF: Special case for 'any' (wildcard .) - ultra-fast advance!
+                if constexpr (std::is_same_v<ContentType, any>) {
+                    size_t count = 0;
+                    Iterator start = current;
+                    
+                    if (multiline_mode(f)) {
+                        // In multiline: skip all non-\n characters
+                        while (current != last && (B == 0 || count < B)) {
+                            if (*current == '\n') break;
+                            ++current;
+                            ++count;
+                        }
+                    } else {
+                        // In singleline: skip ANY characters (fastest path!)
+                        if constexpr (std::is_pointer_v<Iterator>) {
+                            size_t remaining = last - current;
+                            size_t to_advance = (B == 0) ? remaining : std::min(remaining, B);
+                            current += to_advance;
+                            count = to_advance;
+                        } else {
+                            while (current != last && (B == 0 || count < B)) {
+                                ++current;
+                                ++count;
+                            }
+                        }
+                    }
+                    
+                    if (count >= A) {
+                        return evaluate(begin, current, last, consumed_something(f), captures, ctll::list<Tail...>());
+                    } else {
+                        return not_matched;
+                    }
+                }
+                
                 // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
                 // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
                 if constexpr (simd::is_multi_range<ContentType>::is_valid) {
@@ -450,9 +485,18 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     // Note: Multi-range patterns (handled above) won't reach here
                     constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-                    // PERF: Always use SIMD for contiguous ranges (no threshold)
+                    // Check if this is a negated range (always use SIMD for negated!)
+                    constexpr bool is_negated = [] {
+                        if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_negated; }) {
+                            return simd::simd_pattern_trait<ContentType>::is_negated;
+                        } else {
+                            return false;
+                        }
+                    }();
+
+                    // PERF: Always use SIMD for contiguous ranges (no threshold) and negated ranges
                     constexpr bool use_simd = true;
-                    if constexpr (!has_gaps && use_simd) {
+                    if constexpr ((!has_gaps || is_negated) && use_simd) {
                         // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                         // We can now safely process high-bit characters (0x80-0xFF)
                         Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
@@ -565,6 +609,40 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
             // Only use SIMD for char iterators (not wchar_t, char16_t, char32_t, etc.)
             if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>,
                                          char>) {
+                
+                // PERF: Special case for 'any' (wildcard .) - ultra-fast advance!
+                if constexpr (std::is_same_v<ContentType, any>) {
+                    size_t count = 0;
+                    Iterator start = current;
+                    
+                    if (multiline_mode(f)) {
+                        // In multiline: skip all non-\n characters
+                        while (current != last && (B == 0 || count < B)) {
+                            if (*current == '\n') break;
+                            ++current;
+                            ++count;
+                        }
+                    } else {
+                        // In singleline: skip ANY characters (fastest path!)
+                        if constexpr (std::is_pointer_v<Iterator>) {
+                            size_t remaining = last - current;
+                            size_t to_advance = (B == 0) ? remaining : std::min(remaining, B);
+                            current += to_advance;
+                            count = to_advance;
+                        } else {
+                            while (current != last && (B == 0 || count < B)) {
+                                ++current;
+                                ++count;
+                            }
+                        }
+                    }
+                    
+                    if (count >= A) {
+                        return evaluate(begin, current, last, consumed_something(f), captures, ctll::list<Tail...>());
+                    } else {
+                        return not_matched;
+                    }
+                }
                 // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
                 // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
                 if constexpr (simd::is_multi_range<ContentType>::is_valid) {
@@ -598,9 +676,18 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     // Note: Multi-range patterns (handled above) won't reach here
                     constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-                    // PERF: Always use SIMD for contiguous ranges (no threshold)
+                    // Check if this is a negated range (always use SIMD for negated!)
+                    constexpr bool is_negated = [] {
+                        if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_negated; }) {
+                            return simd::simd_pattern_trait<ContentType>::is_negated;
+                        } else {
+                            return false;
+                        }
+                    }();
+
+                    // PERF: Always use SIMD for contiguous ranges (no threshold) and negated ranges
                     constexpr bool use_simd = true;
-                    if constexpr (!has_gaps && use_simd) {
+                    if constexpr ((!has_gaps || is_negated) && use_simd) {
                         // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                         // We can now safely process high-bit characters (0x80-0xFF)
                         Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);

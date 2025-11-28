@@ -185,6 +185,45 @@ int main() {
     BENCH("a+_128", "a+", gen_repeat('a', 128), "Single a plus (128)");
     BENCH("a+_256", "a+", gen_repeat('a', 256), "Single a plus (256)");
 
+    // ========================================================================
+    // REAL-WORLD COMPLEX PATTERNS (from regex benchmark suite)
+    // ========================================================================
+    // These test CTRE's performance on patterns beyond simple character classes
+
+    // Literal strings - baseline for literal matching
+    BENCH("literal_Twain", "Twain", std::string("Twain"), "Literal: Twain");
+
+    // Character class + literals - tests SIMD + literal combo
+    BENCH("char_literal_32", "[a-z]shing", std::string("fishing"), "Char class + literal: [a-z]shing");
+
+    // Alternation - tests branch prediction and multiple literal matching
+    BENCH("alternation_4", "Tom|Sawyer|Huckleberry|Finn", std::string("Tom"), "Alternation: 4 names");
+
+    // Complex pattern with negated class
+    BENCH("negated_class", "[a-q][^u-z]{13}x", std::string("aabcdefghijklmx"), "Negated char class pattern");
+
+    // Literal with suffix matching
+    BENCH("suffix_ing", "[a-zA-Z]+ing", std::string("fishingfishingfishing"), "Suffix matching: *ing");
+
+    // Complex alternation with character classes
+    BENCH("complex_alt", "Huck[a-zA-Z]+|Saw[a-zA-Z]+", std::string("Huckleberry"), "Complex alternation");
+
+    // Any character patterns (tests . wildcard)
+    BENCH("any_char_group", ".{0,2}(Tom|Sawyer|Huckleberry|Finn)", std::string("xxTom"), "Any char + group");
+    BENCH("any_char_range", ".{2,4}(Tom|Sawyer|Huckleberry|Finn)", std::string("xxxxTom"), "Any char range + group");
+
+    // Long-range patterns (tests . with large counts)
+    BENCH("long_range_1", "Tom.{10,25}river", std::string("Tom1234567890river"), "Long range: Tom...river");
+
+    // Whitespace + character classes
+    BENCH("whitespace_ing", "\\s[a-zA-Z]{0,12}ing\\s", std::string(" fishing "), "Whitespace + char class");
+
+    // Complex groups with alternation
+    BENCH("group_alt", "([A-Za-z]awyer|[A-Za-z]inn)\\s", std::string("Sawyer "), "Group alternation");
+
+    // Quoted strings with character classes
+    BENCH("quoted_str", "[\"'][^\"']{0,30}[?!\\.][\"']", std::string("\"Hello world!\""), "Quoted string pattern");
+
     #undef BENCH
 
     // Print results

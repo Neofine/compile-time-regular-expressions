@@ -102,6 +102,14 @@ constexpr size_t count_char_class_size(set<Content...>*) {
     return (count_char_class_size(static_cast<Content*>(nullptr)) + ...);
 }
 
+// Negated set (NOT operation on character class)
+template <typename... Content>
+constexpr size_t count_char_class_size(negative_set<Content...>*) {
+    // For negated set, count is (256 - inner_count)
+    constexpr size_t inner_count = (count_char_class_size(static_cast<Content*>(nullptr)) + ...);
+    return (inner_count > 0) ? (256 - inner_count) : 256;
+}
+
 // Fallback
 template <typename T>
 constexpr size_t count_char_class_size(T*) {
