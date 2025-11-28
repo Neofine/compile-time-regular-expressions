@@ -718,11 +718,55 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         }
     }
 
-    // Process full 32-byte chunks with bounds checking
+    // PERF: Process 64-byte chunks when possible (2x unroll reduces loop overhead)
+    while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
+        if (!has_at_least_bytes(current, last, 64)) {
+            break;
+        }
+
+        __m256i data1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+        __m256i data2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*(current + 32)));
+        __m256i result1, result2;
+
+        if (case_insensitive) {
+            __m256i data1_lower = _mm256_or_si256(data1, _mm256_set1_epi8(0x20));
+            __m256i data2_lower = _mm256_or_si256(data2, _mm256_set1_epi8(0x20));
+            result1 = _mm256_cmpeq_epi8(data1_lower, target_lower_vec);
+            result2 = _mm256_cmpeq_epi8(data2_lower, target_lower_vec);
+        } else {
+            result1 = _mm256_cmpeq_epi8(data1, target_vec);
+            result2 = _mm256_cmpeq_epi8(data2, target_vec);
+        }
+
+        // Check if both chunks match completely
+        __m256i all_ones = _mm256_set1_epi8(0xFF);
+        bool match1 = _mm256_testc_si256(result1, all_ones);
+        bool match2 = _mm256_testc_si256(result2, all_ones);
+
+        if (match1 && match2) {
+            current += 64;
+            count += 64;
+        } else if (match1) {
+            // First chunk matches, check second chunk
+            int mask2 = _mm256_movemask_epi8(result2);
+            int first_mismatch = __builtin_ctz(~mask2);
+            current += 32 + first_mismatch;
+            count += 32 + first_mismatch;
+            break;
+        } else {
+            // First chunk has mismatch
+            int mask1 = _mm256_movemask_epi8(result1);
+            int first_mismatch = __builtin_ctz(~mask1);
+            current += first_mismatch;
+            count += first_mismatch;
+            break;
+        }
+    }
+
+    // Process remaining 32-byte chunks
     while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
-        // SAFETY: Check if we have at least 32 bytes available
         if (!has_at_least_bytes(current, last, 32)) {
-            break; // Not enough data, fall back to scalar tail
+            break;
         }
 
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
@@ -735,7 +779,6 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result = _mm256_cmpeq_epi8(data, target_vec);
         }
 
-        // PERF: Use testz for faster all-match check (avoids movemask+cmp)
         if (_mm256_testc_si256(result, _mm256_set1_epi8(0xFF))) {
             current += 32;
             count += 32;
