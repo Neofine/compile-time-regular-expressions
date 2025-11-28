@@ -12,7 +12,7 @@
 **In Loop Context:**
 - 32-byte loop with movemask: 3.39 ns
 - 32-byte loop with testc: **2.62 ns** ✅ FASTER
-- 64-byte loop with movemask: 3.35 ns  
+- 64-byte loop with movemask: 3.35 ns
 - 64-byte loop with testc: **3.21 ns** ✅ FASTER
 
 **Conclusion:** testc is faster IN LOOPS (compiler can optimize better), but slower for single operations.
@@ -67,7 +67,7 @@
 
 ### 2. 64-Byte Loop Unrolling ✅ IMPLEMENTED
 **Benefit:** Reduces loop overhead by processing 2x per iteration
-**Results:** 
+**Results:**
 - 64-byte patterns: +60% speedup (11.05x)
 - 128-byte patterns: Stable (14.80x)
 - 256-byte patterns: Excellent (35.30x)
@@ -209,4 +209,3 @@
 4. **Overhead profiling:** Identify hot paths
 
 **Key Insight:** Micro-benchmarks revealed testc paradox (slow alone, fast in loops) which guided correct implementation!
-
