@@ -483,7 +483,87 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             }
         }
 
-        // Process full 32-byte chunks with bounds checking
+        // PERF: Process 64-byte chunks with interleaved scheduling (same as single-char)
+        const __m256i all_ones = _mm256_set1_epi8(0xFF);
+        
+        while (current != last && (MaxCount == 0 || count + 64 <= MaxCount)) {
+            if (__builtin_expect(!has_at_least_bytes(current, last, 64), 0)) {
+                break; // Unlikely path for small inputs
+            }
+
+            __m256i data1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+            __m256i data2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*(current + 32)));
+            __m256i result1, result2;
+
+            // Range comparison (optimized for both normal and negated ranges)
+            if (case_insensitive) {
+                __m256i data1_lower = _mm256_or_si256(data1, _mm256_set1_epi8(0x20));
+                __m256i data2_lower = _mm256_or_si256(data2, _mm256_set1_epi8(0x20));
+                __m256i min_lower = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
+                __m256i max_lower = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
+
+                __m256i lt_min1 = _mm256_cmpgt_epi8(min_lower, data1_lower);
+                __m256i gt_max1 = _mm256_cmpgt_epi8(data1_lower, max_lower);
+                __m256i lt_min2 = _mm256_cmpgt_epi8(min_lower, data2_lower);
+                __m256i gt_max2 = _mm256_cmpgt_epi8(data2_lower, max_lower);
+
+                if constexpr (is_negated) {
+                    result1 = _mm256_or_si256(lt_min1, gt_max1);
+                    result2 = _mm256_or_si256(lt_min2, gt_max2);
+                } else {
+                    __m256i ge_min1 = _mm256_xor_si256(lt_min1, all_ones);
+                    __m256i le_max1 = _mm256_xor_si256(gt_max1, all_ones);
+                    __m256i ge_min2 = _mm256_xor_si256(lt_min2, all_ones);
+                    __m256i le_max2 = _mm256_xor_si256(gt_max2, all_ones);
+                    result1 = _mm256_and_si256(ge_min1, le_max1);
+                    result2 = _mm256_and_si256(ge_min2, le_max2);
+                }
+            } else {
+                __m256i lt_min1 = _mm256_cmpgt_epi8(min_vec, data1);
+                __m256i gt_max1 = _mm256_cmpgt_epi8(data1, max_vec);
+                __m256i lt_min2 = _mm256_cmpgt_epi8(min_vec, data2);
+                __m256i gt_max2 = _mm256_cmpgt_epi8(data2, max_vec);
+
+                if constexpr (is_negated) {
+                    result1 = _mm256_or_si256(lt_min1, gt_max1);
+                    result2 = _mm256_or_si256(lt_min2, gt_max2);
+                } else {
+                    __m256i ge_min1 = _mm256_xor_si256(lt_min1, all_ones);
+                    __m256i le_max1 = _mm256_xor_si256(gt_max1, all_ones);
+                    __m256i ge_min2 = _mm256_xor_si256(lt_min2, all_ones);
+                    __m256i le_max2 = _mm256_xor_si256(gt_max2, all_ones);
+                    result1 = _mm256_and_si256(ge_min1, le_max1);
+                    result2 = _mm256_and_si256(ge_min2, le_max2);
+                }
+            }
+
+            // PERF: Combine results first, then check (better ILP + fewer testc calls)
+            __m256i combined = _mm256_and_si256(result1, result2);
+            
+            if (__builtin_expect(_mm256_testc_si256(combined, all_ones), 1)) {
+                // Hot path: both chunks match (single testc check!)
+                current += 64;
+                count += 64;
+            } else {
+                // Slow path: Determine which chunk failed
+                if (_mm256_testc_si256(result1, all_ones)) {
+                    // First chunk matches, mismatch in second
+                    int mask2 = _mm256_movemask_epi8(result2);
+                    int first_mismatch = __builtin_ctz(~mask2);
+                    current += 32 + first_mismatch;
+                    count += 32 + first_mismatch;
+                } else {
+                    // Mismatch in first chunk
+                    int mask1 = _mm256_movemask_epi8(result1);
+                    int first_mismatch = __builtin_ctz(~mask1);
+                    current += first_mismatch;
+                    count += first_mismatch;
+                }
+                break;
+            }
+        }
+
+        // Process remaining 32-byte chunks with bounds checking
         while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
             // SAFETY: Check if we have at least 32 bytes available
             if (!has_at_least_bytes(current, last, 32)) {
@@ -507,8 +587,8 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     result = _mm256_or_si256(lt_min, gt_max);
                 } else {
                     // For normal: match if (>= min AND <= max)
-                    __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
-                    __m256i le_max = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));
+                    __m256i ge_min = _mm256_xor_si256(lt_min, all_ones);
+                    __m256i le_max = _mm256_xor_si256(gt_max, all_ones);
                     result = _mm256_and_si256(ge_min, le_max);
                 }
             } else {
@@ -520,8 +600,8 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     result = _mm256_or_si256(lt_min, gt_max);
                 } else {
                     // For normal: match if (>= min AND <= max)
-                    __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
-                    __m256i le_max = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));
+                    __m256i ge_min = _mm256_xor_si256(lt_min, all_ones);
+                    __m256i le_max = _mm256_xor_si256(gt_max, all_ones);
                     result = _mm256_and_si256(ge_min, le_max);
                 }
             }
