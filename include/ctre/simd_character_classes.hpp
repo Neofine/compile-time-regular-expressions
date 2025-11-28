@@ -706,11 +706,12 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result = _mm_cmpeq_epi8(data, target_vec_128);
         }
 
-        int mask = _mm_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFU) {
+        // PERF: Use testz for faster all-match check (1 instruction vs movemask+cmp+ctz)
+        if (_mm_test_all_ones(result)) {
             current += 16;
             count += 16;
         } else {
+            int mask = _mm_movemask_epi8(result);
             int first_mismatch = __builtin_ctz(~mask);
             current += first_mismatch;
             count += first_mismatch;
@@ -734,11 +735,12 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result = _mm256_cmpeq_epi8(data, target_vec);
         }
 
-        int mask = _mm256_movemask_epi8(result);
-        if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+        // PERF: Use testz for faster all-match check (avoids movemask+cmp)
+        if (_mm256_testc_si256(result, _mm256_set1_epi8(0xFF))) {
             current += 32;
             count += 32;
         } else {
+            int mask = _mm256_movemask_epi8(result);
             int first_mismatch = __builtin_ctz(~mask);
             current += first_mismatch;
             count += first_mismatch;
