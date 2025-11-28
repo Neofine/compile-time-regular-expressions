@@ -758,28 +758,29 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             result2 = _mm256_cmpeq_epi8(data2, target_vec);
         }
 
-        // Check if both chunks match completely
-        // PERF: Hint that full matches are the common case (hot path)
-        bool match1 = _mm256_testc_si256(result1, all_ones);
-        bool match2 = _mm256_testc_si256(result2, all_ones);
-
-        if (__builtin_expect(match1 && match2, 1)) {
-            // Hot path: both chunks match
+        // PERF: Combine results first, then check (better ILP + fewer testc calls)
+        // This saves one testc instruction in the hot path (both match)
+        __m256i combined = _mm256_and_si256(result1, result2);
+        
+        if (__builtin_expect(_mm256_testc_si256(combined, all_ones), 1)) {
+            // Hot path: both chunks match (single testc check!)
             current += 64;
             count += 64;
-        } else if (match1) {
-            // First chunk matches, mismatch in second
-            int mask2 = _mm256_movemask_epi8(result2);
-            int first_mismatch = __builtin_ctz(~mask2);
-            current += 32 + first_mismatch;
-            count += 32 + first_mismatch;
-            break;
         } else {
-            // Mismatch in first chunk
-            int mask1 = _mm256_movemask_epi8(result1);
-            int first_mismatch = __builtin_ctz(~mask1);
-            current += first_mismatch;
-            count += first_mismatch;
+            // Slow path: Determine which chunk failed
+            if (_mm256_testc_si256(result1, all_ones)) {
+                // First chunk matches, mismatch in second
+                int mask2 = _mm256_movemask_epi8(result2);
+                int first_mismatch = __builtin_ctz(~mask2);
+                current += 32 + first_mismatch;
+                count += 32 + first_mismatch;
+            } else {
+                // Mismatch in first chunk
+                int mask1 = _mm256_movemask_epi8(result1);
+                int first_mismatch = __builtin_ctz(~mask1);
+                current += first_mismatch;
+                count += first_mismatch;
+            }
             break;
         }
     }
