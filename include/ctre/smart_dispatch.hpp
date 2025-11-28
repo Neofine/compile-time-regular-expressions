@@ -49,21 +49,21 @@ template <typename Pattern>
 struct smart_pattern_analysis {
     // Count alternations
     static constexpr size_t alternation_count = count_alternations_simple<Pattern>();
-    
+
     // Is it an alternation pattern?
     static constexpr bool is_alternation = glushkov::is_select<Pattern>::value;
-    
+
     // Is it a pure repetition? (a*, [a-z]+, etc.)
     static constexpr bool is_repetition = glushkov::is_repeat<Pattern>::value;
-    
+
     // SMART THRESHOLD: Use BitNFA if:
     //   - Pattern has alternations (A|B|C)
     //   - At least 1 alternation
     //   - NO input size threshold needed! (BitNFA wins at all sizes for alternations)
-    static constexpr bool use_bitnfa = 
+    static constexpr bool use_bitnfa =
         is_alternation &&           // Must be alternation
         (alternation_count >= 1);   // At least 1 alternation (A|B)
-    
+
     // Explanation for decision
     static constexpr const char* strategy_name() {
         if constexpr (use_bitnfa) {
@@ -136,4 +136,3 @@ consteval const char* get_strategy_name() {
 } // namespace ctre
 
 #endif // CTRE_SMART_DISPATCH_HPP
-
