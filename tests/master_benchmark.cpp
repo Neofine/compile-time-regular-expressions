@@ -235,14 +235,14 @@ int main() {
     // Alternation - tests branch prediction and multiple literal matching
     BENCH_BITNFA("alternation_4", "Tom|Sawyer|Huckleberry|Finn", std::string("Tom"), "Alternation: 4 names [BitNFA]");
 
-    // Complex pattern with negated class (using BitNFA)
-    BENCH_BITNFA("negated_class", "[a-q][^u-z]{13}x", std::string("aabcdefghijklmx"), "Negated char class [BitNFA]");
+    // Complex pattern with negated class
+    BENCH("negated_class", "[a-q][^u-z]{13}x", std::string("aabcdefghijklmx"), "Negated char class pattern");
 
     // Literal with suffix matching
     BENCH("suffix_ing", "[a-zA-Z]+ing", std::string("fishingfishingfishing"), "Suffix matching: *ing");
 
-    // Complex alternation with character classes (using BitNFA for better performance)
-    BENCH_BITNFA("complex_alt", "Huck[a-zA-Z]+|Saw[a-zA-Z]+", std::string("Huckleberry"), "Complex alternation [BitNFA]");
+    // Complex alternation with character classes
+    BENCH("complex_alt", "Huck[a-zA-Z]+|Saw[a-zA-Z]+", std::string("Huckleberry"), "Complex alternation");
 
     // Any character patterns (tests . wildcard)
     BENCH("any_char_group", ".{0,2}(Tom|Sawyer|Huckleberry|Finn)", std::string("xxTom"), "Any char + group");
