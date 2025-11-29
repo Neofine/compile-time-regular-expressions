@@ -54,7 +54,7 @@ if (remaining >= 28) {
 
 **After:**
 ```cpp
-// Optimized 16-byte threshold  
+// Optimized 16-byte threshold
 if (remaining >= 16) {
     // Use SIMD for simple patterns
 }
@@ -218,4 +218,3 @@ The Teddy exploration was valuable:
 - Knowledge gained: Priceless 💡
 
 **The grinding paid off!** 🔥
-

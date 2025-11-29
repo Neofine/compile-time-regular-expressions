@@ -1,0 +1,115 @@
+\section{CTRE Automata Representation}
+
+CTRE employs compile-time pattern compilation, transforming regular expression strings into C++ template type hierarchies that encode pattern structure and matching semantics. This section describes the type-based representation and evaluation model that forms the substrate for SIMD optimization.
+
+\subsection{Compile-Time Pattern Parsing}
+
+Regular expression patterns are processed at compilation via a constexpr parser that produces a type-level abstract syntax tree (AST). The transformation occurs in two phases:
+
+\begin{enumerate}
+    \item \textbf{Lexical analysis and parsing}: A compile-time LL parser (\texttt{ctll::parser}) processes the pattern string using PCRE syntax rules, producing a parse tree represented as nested template types.
+
+    \item \textbf{Type extraction}: The parser output is a compile-time type stack from which the final pattern type is extracted via \texttt{ctll::front()}.
+\end{enumerate}
+
+\noindent Example transformation for pattern \texttt{[a-z]+}:
+\begin{verbatim}
+using Pattern = repeat<1,        // minimum: 1
+                       0,        // maximum: unlimited (0)
+                       set<char_range<'a', 'z'>>>;
+\end{verbatim}
+
+\subsection{Type-Based AST Structure}
+
+The pattern AST comprises a small set of fundamental type templates defined in \texttt{atoms.hpp}:
+
+\begin{itemize}
+    \item \texttt{character<C>}: Single character literal
+    \item \texttt{string<C1, C2, ...>}: String literal (compile-time character sequence)
+    \item \texttt{set<...>}: Character class (may contain \texttt{char\_range}, negation, named sets)
+    \item \texttt{repeat<A, B, Content...>}: Repetition with bounds [\textit{A}, \textit{B}]
+    \item \texttt{sequence<...>}: Sequential composition of subpatterns
+    \item \texttt{select<Opt1, Opt2, ...>}: Alternation (disjunction)
+    \item \texttt{capture<N, ...>}: Capturing group
+    \item \texttt{lookahead\_positive<...>}, \texttt{lookbehind\_positive<...>}: Assertions
+    \item \texttt{back\_reference<N>}: Backreference to captured group
+\end{itemize}
+
+Pattern composition occurs via template parameter nesting. The pattern \texttt{(ab)+[0-9]} produces:
+\begin{verbatim}
+sequence<repeat<1, 0, sequence<character<'a'>,
+                               character<'b'>>>,
+         set<char_range<'0', '9'>>>
+\end{verbatim}
+
+\subsection{Template-Driven Evaluation}
+
+Pattern matching proceeds through recursive template function instantiation. The core evaluation function has signature:
+\begin{verbatim}
+template <typename R, typename BeginIt, typename It,
+          typename EndIt, typename... Pattern>
+constexpr R evaluate(BeginIt begin, It current,
+                    EndIt last, flags f, R captures,
+                    ctll::list<Pattern...>);
+\end{verbatim}
+
+Evaluation consumes pattern types from the type list, advancing the input iterator as characters are matched. Template specialization provides distinct logic for each pattern type. For \texttt{repeat<A, B, Content...>}, the specialization:
+
+\begin{enumerate}
+    \item Attempts to match \texttt{Content} between $A$ and $B$ times
+    \item Advances the iterator for each successful match
+    \item Recurses with remaining pattern types on success
+    \item Backtracks on failure (for greedy quantifiers)
+\end{enumerate}
+
+The type list (\texttt{ctll::list}) serves as a compile-time instruction sequence, with each type representing an operation in the matching algorithm. Pattern information is entirely embedded in types, enabling complete inlining and optimization by the C++ compiler.
+
+\subsection{SIMD Integration Architecture}
+
+SIMD optimization integrates into CTRE's evaluation framework through multiple complementary mechanisms, each targeting distinct pattern classes. The integration preserves CTRE's three-layer evaluation model while introducing vectorized fast paths.
+
+\subsubsection{Dual Evaluation Backend Architecture}
+
+The implementation extends CTRE with two distinct evaluation backends, selected at compile time based on pattern structure:
+
+\paragraph{Base CTRE Evaluation with SIMD Fast Paths}
+
+The original CTRE evaluation, implemented in \texttt{evaluation.hpp}, employs direct pattern type interpretation through template recursion. Each pattern type (\texttt{repeat}, \texttt{select}, \texttt{sequence}) has a corresponding \texttt{evaluate()} template specialization that implements matching semantics. Character matching proceeds iteratively, advancing the input iterator as pattern elements are matched.
+
+SIMD optimizations integrate into this evaluation path at specific pattern types. The \texttt{repeat<A, B, set<...>>} specialization contains conditional dispatch to SIMD implementations when pattern traits and input size satisfy vectorization criteria. SIMD functions process multiple characters per iteration, returning an advanced iterator position upon successful match. If SIMD dispatch declines or SIMD matching fails, execution continues with character-by-character scalar iteration within the same evaluation framework.
+
+\paragraph{BitNFA Backend}
+
+BitNFA provides an alternative evaluation strategy for alternation-dominated patterns (\texttt{select<Opt1, Opt2, ...>}). This backend compiles the pattern AST into a conventional NFA representation with explicit state transitions, then simulates NFA execution using bit-parallel operations. Active NFA states are maintained as a bit vector, with each bit representing one NFA state. State transitions apply simultaneously to all active states via bitwise operations on the state vector.
+
+BitNFA selection occurs at compile time through pattern analysis: patterns containing alternations dispatch to BitNFA via \texttt{bitnfa::match<Pattern>()}, while repetition-dominated patterns use the base CTRE evaluation with SIMD. The \texttt{smart\_dispatch} layer implements this compile-time backend selection based on pattern type classification.
+
+\subsubsection{SIMD Dispatch Hierarchy}
+
+Within the repetition evaluation specialization, SIMD dispatch follows a waterfall pattern based on pattern characteristics extracted at compile time:
+
+\begin{enumerate}
+    \item \textbf{Compile-time eligibility}: Template metaprogramming extracts pattern traits (\texttt{simd\_pattern\_trait<ContentType>}): character range bounds, negation semantics, character class density, multi-range structure. Patterns lacking these traits bypass SIMD entirely through SFINAE.
+
+    \item \textbf{Runtime size threshold}: Input length compared against pattern-dependent threshold (16 bytes for simple patterns, 28 bytes for complex patterns with negation or sparse sets). Short inputs skip SIMD to avoid overhead amortization failure.
+
+    \item \textbf{SIMD technique selection}: Eligible patterns dispatch to specialized implementations:
+    \begin{itemize}
+        \item \textbf{Multi-range} (\texttt{[a-zA-Z]}, \texttt{[0-9a-fA-F]}): Uses range-based comparison (2 comparisons + AND per character) when pattern contains 2+ non-adjacent ranges
+        \item \textbf{Shufti} (\texttt{[aeiou]}): Employs \texttt{pshufb}-based lookup table for sparse character sets ($\leq$16 characters)
+        \item \textbf{Direct comparison} (\texttt{[a-z]}, \texttt{[0-9]}): Simple range bounds checking for single dense ranges
+        \item \textbf{Single character} (\texttt{a+}, \texttt{9*}): Optimized \texttt{pcmpeqb} + \texttt{pmovmskb} for single-character repetitions
+    \end{itemize}
+
+    \item \textbf{Scalar fallback}: If SIMD implementations decline (pattern characteristics unsuitable) or return no match, evaluation continues via standard Glushkov NFA character iteration.
+\end{enumerate}
+
+\subsubsection{Greedy Quantifier Optimization}
+
+Standard greedy quantifiers (\texttt{*}, \texttt{+}, \texttt{\{m,n\}}) potentially require backtracking. SIMD optimization applies when compile-time first-set analysis determines backtracking is unnecessary: if the first character sets of repetition content and subsequent pattern are disjoint (\texttt{!collides(first(Content), first(Tail))}), the greedy quantifier is transformed to possessive form at evaluation time, enabling SIMD application. Patterns requiring actual backtracking (e.g., \texttt{a+a}) fall back to recursive scalar evaluation.
+
+\subsubsection{Zero-Overhead Preservation}
+
+The integration architecture maintains zero-overhead abstraction through compile-time code path elimination. Pattern types incompatible with SIMD (assertions, backreferences, atomic groups) never instantiate SIMD-related template specializations due to SFINAE and \texttt{requires} clauses. The compiler's dead code elimination removes all SIMD dispatch logic from binaries handling only SIMD-incompatible patterns.
+
+Captures (\texttt{capture<N, ...>}) are orthogonal to SIMD optimization: they mark iterator positions before and after inner pattern evaluation but do not affect the evaluation strategy for inner content. A captured repetition \texttt{([a-z]+)} applies SIMD to the inner \texttt{repeat} while recording capture boundaries.

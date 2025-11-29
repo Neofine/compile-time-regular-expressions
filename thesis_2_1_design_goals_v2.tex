@@ -1,0 +1,52 @@
+\chapter{Design and Implementation}
+\label{chap:design}
+
+This chapter presents the architecture and implementation strategy of the proposed SIMD-accelerated extensions to Compile-Time Regular Expressions (CTRE) library. The chapter begins by outlining the design objectives and constraints that shaped the integration of SIMD capabilities into CTRE, it then introduces the internal representation of automata produced at compile time followed by a detailed account of the vectorised matching model and its integration into the CTRE compile-time pipeline. Further sections discuss portability considerations, architectural trade-offs made and practical concerns encountered during the implementation.
+
+\section{Design Goals and Constraints}
+
+\subsection{Design Goals}
+
+The implementation framework was designed with four primary objectives:
+
+\begin{itemize}
+    \item \textbf{Maximum performance across pattern types}: Optimize all pattern classes amenable to vectorization based on inherent data-level parallelism rather than usage frequency. Character class repetitions (\texttt{[a-z]+}, \texttt{[0-9]*}) receive primary focus due to their 32:1 theoretical parallelism factor on AVX2 architectures.
+
+    \item \textbf{Zero-overhead abstraction}:
+        \begin{itemize}
+            \item Patterns unsuitable for SIMD incur no performance penalty
+            \item Compile-time pattern analysis determines optimization strategy
+            \item Runtime dispatch overhead minimized through capability caching
+            \item Scalar fallback paths maintain baseline performance
+        \end{itemize}
+
+    \item \textbf{Compile-time optimization selection}: Leverage CTRE's compile-time pattern compilation to eliminate runtime pattern analysis. Pattern characteristics extracted via template metaprogramming enable compiler-driven dead code elimination.
+
+    \item \textbf{Portability across SIMD instruction sets}: Support AVX2 (256-bit), SSE4.2 (128-bit), and scalar execution with runtime capability detection and compile-time path generation.
+\end{itemize}
+
+\subsection{Architectural Constraints}
+
+Four principal constraints bounded the design space:
+
+\begin{itemize}
+    \item \textbf{Preserve compile-time semantics}: CTRE represents patterns as nested template types (\texttt{repeat<1, unlimited, set<char\_range<'a', 'z'>>>}). Optimization logic must operate on type-level representations using template specialization and \texttt{constexpr} evaluation; runtime pattern analysis is architecturally infeasible.
+
+    \item \textbf{Correctness preservation}: SIMD implementations must produce bit-identical results to scalar code across all edge cases: high-bit characters (0x80-0xFF), negated classes, case-insensitive matching, and boundary conditions.
+
+    \item \textbf{Instruction cache pressure}: SIMD code paths generate larger binaries. Empirical measurement identified instruction cache thrashing beyond 32KB code size on target architectures, necessitating careful inlining decisions.
+
+    \item \textbf{Input size thresholds}: SIMD overhead dominates for short inputs. Empirical analysis established pattern-dependent thresholds: 16 bytes for simple patterns (single character, dense ranges), 28 bytes for complex patterns (negation, sparse sets).
+
+    \item \textbf{Feature completeness}: Unlike RE2 which omits backreferences and assertions for performance, CTRE retains full support for backreferences (\texttt{\textbackslash g\{1\}}), lookahead/lookbehind assertions (\texttt{(?=...)}, \texttt{(?<=...)}), and atomic groups. These patterns are excluded from SIMD optimization due to fundamental data dependencies, but maintain competitive scalar performance through zero-overhead abstraction.
+\end{itemize}
+
+\subsection{Explicit Non-Goals}
+
+Two optimization categories were explicitly excluded:
+
+\begin{itemize}
+    \item \textbf{Search operations}: Design scope limited to match operations (exact matching at position) rather than search (pattern location in text). Search requires fundamentally different algorithms (Boyer-Moore, Teddy multi-string matching).
+
+    \item \textbf{AVX-512 support}: Excluded due to limited deployment, frequency throttling effects, and substantially increased implementation complexity relative to marginal performance gains.
+\end{itemize}
