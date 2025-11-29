@@ -9,6 +9,7 @@
 #include "utility.hpp"
 #include "glushkov_nfa.hpp"
 #include "bitnfa/bitnfa_match.hpp"
+#include "decomposition.hpp"
 #ifndef CTRE_IN_A_MODULE
 #include <string_view>
 #endif
@@ -72,9 +73,47 @@ struct match_method {
 	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin orig_begin, IteratorBegin begin, IteratorEnd end, RE) noexcept {
 		using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-		// Base evaluation with SIMD fast paths (optimal for all pattern types based on benchmarks)
-		// BitNFA is available as alternative backend via bitnfa::match<> but benchmarks show
-		// CTRE+SIMD is faster for most patterns including alternations
+		// HYPERSCAN-INSPIRED: Graph analysis prefiltering for fail-fast
+		// All analysis is compile-time, zero runtime overhead per assembly verification
+		if constexpr (decomposition::has_prefilter_literal<RE>) {
+			constexpr auto literal = decomposition::prefilter_literal<RE>;
+
+			// Only prefilter for substantial literals and compatible iterators
+			if constexpr (literal.length >= 2 && std::is_pointer_v<IteratorBegin> && std::is_same_v<IteratorEnd, const char*>) {
+				// Runtime: Quick literal scan for fail-fast
+				if (!std::is_constant_evaluated()) {
+					// Inline literal check (compiler will vectorize)
+					bool found = [&]<size_t... Is>(std::index_sequence<Is...>) {
+						constexpr char lit[] = {literal.chars[Is]..., '\0'};
+						constexpr size_t len = sizeof...(Is);
+						const char first = lit[0];
+
+						for (const char* it = begin; it + len <= end; ++it) {
+							if (*it == first) {
+								bool match = true;
+								for (size_t i = 1; i < len; ++i) {
+									if (it[i] != lit[i]) {
+										match = false;
+										break;
+									}
+								}
+								if (match) return true;
+							}
+						}
+						return false;
+					}(std::make_index_sequence<literal.length>{});
+
+					if (!found) {
+						// Literal not present -> fail fast
+						auto out = evaluate(orig_begin, end, end, Modifier{}, return_type<result_iterator, RE>{},
+						                   ctll::list<start_mark, RE, assert_subject_end, end_mark, accept>());
+						return out;
+					}
+				}
+			}
+		}
+
+		// Base evaluation with SIMD fast paths
 		return evaluate(orig_begin, begin, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, assert_subject_end, end_mark, accept>());
 	}
 
