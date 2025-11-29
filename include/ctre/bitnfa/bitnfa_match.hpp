@@ -63,6 +63,15 @@ __attribute__((always_inline)) inline match_result match(const BitNFA128& nfa, s
     return match_result{0, 0, false};
 }
 
+// Match from AST directly (used by smart dispatch in wrapper.hpp)
+template <typename AST>
+inline match_result match_from_ast(std::string_view input) {
+    // Compile AST to NFA and match
+    // This avoids circular dependency by going directly to NFA
+    static constexpr auto nfa = compile_from_ast<AST>();
+    return match(nfa, input);
+}
+
 // Convenience: compile pattern string and match
 template <ctll::fixed_string Pattern>
 inline match_result match(std::string_view input) {
@@ -71,38 +80,7 @@ inline match_result match(std::string_view input) {
     static_assert(tmp(), "Regular Expression contains syntax error.");
     using AST = decltype(ctll::front(typename tmp::output_type::stack_type()));
 
-    // Try specialized fast path for simple patterns
-    if constexpr (should_use_fast_path<AST>::value) {
-        if constexpr (is_string<AST>::value || is_character<AST>::value) {
-            bool matched = fast_match(input, static_cast<AST*>(nullptr));
-            return {0, matched ? input.size() : size_t(0), matched};
-        }
-    }
-
-    // NEW: Fast path for literal alternations (foo|bar|baz)
-    // This is our BitNFA optimization with Teddy-ready architecture!
-    if constexpr (is_literal_alternation<AST>::value) {
-        constexpr auto literals = get_literals_if_applicable<AST>();
-        size_t match_len = 0;
-        int idx = match_literal_alternation(input, literals, &match_len);
-        if (idx >= 0) {
-            return {0, match_len, true};
-        }
-        return {0, 0, false};
-    }
-
-    // For patterns with character classes or repetitions: delegate to CTRE (has SIMD!)
-    if constexpr (::ctre::glushkov::is_repeat<AST>::value || ::ctre::glushkov::is_select<AST>::value) {
-        auto ctre_result = ::ctre::match<Pattern>(input);
-        if (ctre_result) {
-            return match_result{0, input.size(), true};
-        }
-        return match_result{0, 0, false};
-    } else {
-        // Fall back to generic NFA matching (rare - only for complex patterns)
-        static constexpr auto nfa = compile_pattern_string_with_charclass<Pattern>();
-        return match(nfa, input);
-    }
+    return match_from_ast<AST>(input);
 }
 
 // =============================================================================

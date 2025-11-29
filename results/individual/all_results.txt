@@ -1,80 +1,80 @@
-[0-2]*_32@@[0-2]*@@2.71979@@Tiny range 0-2 star@@9.85498@@3.62x
-[0-2]+_32@@[0-2]+@@1.8945@@Tiny range 0-2 plus@@13.9171@@7.35x
-[02468]*_32@@[02468]*@@1.62179@@Even digits star (32)@@17.7899@@10.97x
-[02468]+_32@@[02468]+@@1.6233@@Even digits plus (32)@@18.0092@@11.09x
-[0-9]*_256@@[0-9]*@@3.79479@@Digits star (256)@@71.2666@@18.78x
-[0-9]+_256@@[0-9]+@@4.23449@@Digits plus (256)@@103.117@@24.35x
-9*_32@@9*@@2.106@@Single char 9 star@@19.3834@@9.20x
-9+_32@@9+@@2.27019@@Single char 9 plus@@9.58888@@4.22x
-9*_32@@9*@@2.1062@@Single char 9 star@@9.85718@@4.68x
-9+_32@@9+@@2.10629@@Single char 9 plus@@9.58539@@4.55x
-a*_64@@a*@@2.63219@@Single a star (64)@@18.5338@@7.04x
-9*_32@@9*@@2.10589@@Single char 9 star@@9.87518@@4.69x
-9+_32@@9+@@2.10631@@Single char 9 plus@@9.61177@@4.56x
-9*_32@@9*@@1.08149@@Single char 9 star@@9.88257@@9.14x
-9+_32@@9+@@1.2247@@Single char 9 plus@@9.59508@@7.83x
-9*_32@@9*@@2.1058@@Single char 9 star@@9.85867@@4.68x
-9+_32@@9+@@1.0814@@Single char 9 plus@@9.59807@@8.88x
-a*_128@@a*@@3.68469@@Single a star (128)@@36.0684@@9.79x
-a+_128@@a+@@3.68479@@Single a plus (128)@@35.8242@@9.72x
-a*_16@@a*@@2.10559@@Single a star (16)@@8.64899@@4.11x
-a+_16@@a+@@2.1057@@Single a plus (16)@@17.0688@@8.11x
-a*_256@@a*@@6.48688@@Single a star (256)@@141.182@@21.76x
-a+_256@@a+@@2.97319@@Single a plus (256)@@71.1648@@23.94x
-a*_32@@a*@@2.23739@@Single char a star@@9.75998@@4.36x
-a+_32@@a+@@2.21099@@Single char a plus@@35.9846@@16.28x
-A*_32@@A*@@1.14889@@Single char A star@@9.59308@@8.35x
-A+_32@@A+@@2.21099@@Single char A plus@@18.3044@@8.28x
-a*_64@@a*@@1.35169@@Single a star (64)@@18.5134@@13.70x
-a+_64@@a+@@3.05319@@Single a plus (64)@@36.8683@@12.08x
-a*_32@@a*@@2.23729@@Single char a star@@18.6468@@8.33x
-a*_64@@a*@@2.63229@@Single a star (64)@@36.6617@@13.93x
-a*_32@@a*@@2.23739@@Single char a star@@18.8829@@8.44x
-a+_32@@a+@@1.13539@@Single char a plus@@18.3522@@16.16x
-a*_32@@a*@@2.23739@@Single char a star@@18.7597@@8.38x
-a*_64@@a*@@2.63239@@Single a star (64)@@18.511@@7.03x
-a*_32@@a*@@1.57869@@Single char a star@@9.51357@@6.03x
-a*_64@@a*@@2.63239@@Single a star (64)@@18.6302@@7.08x
-a*_32@@a*@@1.14889@@Single char a star@@9.59227@@8.35x
-a+_32@@a+@@2.21109@@Single char a plus@@35.947@@16.26x
-a*_32@@a*@@2.23739@@Single char a star@@9.58549@@4.28x
-a+_32@@a+@@1.13539@@Single char a plus@@18.5919@@16.37x
-a*_64@@a*@@2.63289@@Single a star (64)@@36.4901@@13.86x
-a*_32@@a*@@2.2373@@Single char a star@@9.51698@@4.25x
-alternation_4@@Tom|Sawyer|Huckleberry|Finn@@1.5793@@Alternation: 4 names@@1.5793@@1.00x
-any_char_group@@.{0,2}(Tom|Sawyer|Huckleberry|Finn)@@1.57949@@Any char + group@@11.7408@@7.43x
-any_char_range@@.{2,4}(Tom|Sawyer|Huckleberry|Finn)@@1.57949@@Any char range + group@@11.8064@@7.47x
-a*_128@@a*@@1.89209@@Single a star (128)@@36.1945@@19.13x
-a+_128@@a+@@1.8925@@Single a plus (128)@@35.9543@@19.00x
-a*_16@@a*@@1.0812@@Single a star (16)@@8.76767@@8.11x
-a+_16@@a+@@1.08129@@Single a plus (16)@@8.79538@@8.13x
-a*_256@@a*@@6.31638@@Single a star (256)@@141.532@@22.41x
-a+_256@@a+@@3.3319@@Single a plus (256)@@71.3437@@21.41x
-[A-Z]*_256@@[A-Z]*@@3.78409@@Uppercase star (256)@@141.818@@37.48x
-a*_32@@a*@@1.14889@@Single char a star@@9.58768@@8.35x
-a+_32@@a+@@1.13539@@Single char a plus@@18.306@@16.12x
-A*_32@@A*@@1.14889@@Single char A star@@9.60829@@8.36x
-A+_32@@A+@@2.2111@@Single char A plus@@22.014@@9.96x
-[a-z]*_512@@[a-z]*@@7.02748@@Lowercase star (512)@@285.758@@40.66x
-[a-z]+_512@@[a-z]+@@7.77068@@Lowercase plus (512)@@146.422@@18.84x
-a*_64@@a*@@1.35159@@Single a star (64)@@18.5669@@13.74x
-a+_64@@a+@@3.05319@@Single a plus (64)@@36.0635@@11.81x
-a*_128@@a*@@1.89209@@Single a star (128)@@36.0786@@19.07x
-a*_32@@a*@@2.2373@@Single char a star@@18.8369@@8.42x
-a+_32@@a+@@2.21099@@Single char a plus@@18.2359@@8.25x
-a*_64@@a*@@1.35169@@Single a star (64)@@18.5223@@13.70x
-a+_64@@a+@@1.56789@@Single a plus (64)@@35.8694@@22.88x
-b*_32@@b*@@2.2373@@Single char b star@@18.6743@@8.35x
-b+_32@@b+@@2.27079@@Single char b plus@@37.151@@16.36x
-char_literal_32@@[a-z]shing@@0.52689@@Char class + literal: [a-z]shing@@0.70219@@1.33x
-complex_alt@@Huck[a-zA-Z]+|Saw[a-zA-Z]+@@11.1836@@Complex alternation@@15.5665@@1.39x
-group_alt@@([A-Za-z]awyer|[A-Za-z]inn)\s@@3.84099@@Group alternation@@3.685@@0.96x
-literal_Twain@@Twain@@2.10619@@Literal: Twain@@2.1811@@1.04x
-long_range_1@@Tom.{10,25}river@@5.40579@@Long range: Tom...river@@14.1838@@2.62x
-negated_class@@[a-q][^u-z]{13}x@@4.32458@@Negated char class pattern@@4.18939@@0.97x
-suffix_ing@@[a-zA-Z]+ing@@12.8358@@Suffix matching: *ing@@31.7964@@2.48x
-whitespace_ing@@\s[a-zA-Z]{0,12}ing\s@@6.08229@@Whitespace + char class@@5.67589@@0.93x
-z*_32@@z*@@2.23739@@Single char z star@@18.7329@@8.37x
-z+_32@@z+@@1.13539@@Single char z plus@@18.2654@@16.09x
-z*_32@@z*@@2.23739@@Single char z star@@9.53528@@4.26x
-z+_32@@z+@@2.21099@@Single char z plus@@36.4328@@16.48x
+[0-2]*_32@@[0-2]*@@2.71989@@Tiny range 0-2 star@@9.85838@@3.62x
+[0-2]+_32@@[0-2]+@@2.14359@@Tiny range 0-2 plus@@13.913@@6.49x
+[02468]*_32@@[02468]*@@3.1582@@Even digits star (32)@@17.7509@@5.62x
+[02468]+_32@@[02468]+@@3.16199@@Even digits plus (32)@@18.0336@@5.70x
+[0-9]*_256@@[0-9]*@@3.87979@@Digits star (256)@@71.1974@@18.35x
+[0-9]+_256@@[0-9]+@@4.27269@@Digits plus (256)@@73.0655@@17.10x
+9*_32@@9*@@2.10589@@Single char 9 star@@16.2196@@7.70x
+9+_32@@9+@@2.10649@@Single char 9 plus@@9.59459@@4.55x
+9*_32@@9*@@1.0814@@Single char 9 star@@9.96057@@9.21x
+9+_32@@9+@@2.10599@@Single char 9 plus@@18.8764@@8.96x
+a*_64@@a*@@2.63219@@Single a star (64)@@18.5795@@7.06x
+9*_32@@9*@@2.10589@@Single char 9 star@@19.3929@@9.21x
+9+_32@@9+@@2.20899@@Single char 9 plus@@9.59888@@4.35x
+9*_32@@9*@@2.1059@@Single char 9 star@@9.86677@@4.69x
+9+_32@@9+@@2.106@@Single char 9 plus@@9.53838@@4.53x
+9*_32@@9*@@2.1628@@Single char 9 star@@9.94967@@4.60x
+9+_32@@9+@@2.16289@@Single char 9 plus@@19.2334@@8.89x
+a*_128@@a*@@3.80379@@Single a star (128)@@36.1189@@9.50x
+a+_128@@a+@@1.89249@@Single a plus (128)@@35.8667@@18.95x
+a*_16@@a*@@2.12969@@Single a star (16)@@8.88569@@4.17x
+a+_16@@a+@@2.10579@@Single a plus (16)@@8.79048@@4.17x
+a*_256@@a*@@3.24349@@Single a star (256)@@141.108@@43.50x
+a+_256@@a+@@6.05099@@Single a plus (256)@@71.2363@@11.77x
+a*_32@@a*@@2.23739@@Single char a star@@18.7465@@8.38x
+a+_32@@a+@@2.21109@@Single char a plus@@36.0297@@16.29x
+A*_32@@A*@@2.23729@@Single char A star@@9.52587@@4.26x
+A+_32@@A+@@2.211@@Single char A plus@@18.3125@@8.28x
+a*_64@@a*@@1.35169@@Single a star (64)@@18.6007@@13.76x
+a+_64@@a+@@3.05309@@Single a plus (64)@@35.9251@@11.77x
+a*_32@@a*@@2.2373@@Single char a star@@9.59099@@4.29x
+a*_64@@a*@@2.63239@@Single a star (64)@@36.535@@13.88x
+a*_32@@a*@@1.6096@@Single char a star@@9.60808@@5.97x
+a+_32@@a+@@1.13539@@Single char a plus@@18.3142@@16.13x
+a*_32@@a*@@2.2373@@Single char a star@@18.9194@@8.46x
+a*_64@@a*@@2.63229@@Single a star (64)@@36.638@@13.92x
+a*_32@@a*@@2.23729@@Single char a star@@9.53198@@4.26x
+a*_64@@a*@@2.63219@@Single a star (64)@@18.604@@7.07x
+a*_32@@a*@@2.23739@@Single char a star@@18.8843@@8.44x
+a+_32@@a+@@2.2111@@Single char a plus@@36.0058@@16.28x
+a*_32@@a*@@1.14891@@Single char a star@@9.73328@@8.47x
+a+_32@@a+@@2.27089@@Single char a plus@@18.2924@@8.06x
+a*_64@@a*@@2.6333@@Single a star (64)@@36.5641@@13.89x
+a*_32@@a*@@2.2373@@Single char a star@@18.7413@@8.38x
+alternation_4@@Tom|Sawyer|Huckleberry|Finn@@0.81099@@Alternation: 4 names@@0.8112@@1.00x
+any_char_group@@.{0,2}(Tom|Sawyer|Huckleberry|Finn)@@0.81109@@Any char + group@@11.4893@@14.17x
+any_char_range@@.{2,4}(Tom|Sawyer|Huckleberry|Finn)@@1.62219@@Any char range + group@@11.7538@@7.25x
+a*_128@@a*@@1.89209@@Single a star (128)@@36.1408@@19.10x
+a+_128@@a+@@1.89219@@Single a plus (128)@@35.8788@@18.96x
+a*_16@@a*@@2.10559@@Single a star (16)@@17.1641@@8.15x
+a+_16@@a+@@2.1058@@Single a plus (16)@@17.163@@8.15x
+a*_256@@a*@@6.22128@@Single a star (256)@@142.53@@22.91x
+a+_256@@a+@@5.88909@@Single a plus (256)@@71.2287@@12.10x
+[A-Z]*_256@@[A-Z]*@@6.43359@@Uppercase star (256)@@141.559@@22.00x
+a*_32@@a*@@1.14889@@Single char a star@@9.58188@@8.34x
+a+_32@@a+@@2.21109@@Single char a plus@@18.3085@@8.28x
+A*_32@@A*@@2.2375@@Single char A star@@9.53427@@4.26x
+A+_32@@A+@@1.13539@@Single char A plus@@18.3118@@16.13x
+[a-z]*_512@@[a-z]*@@7.11028@@Lowercase star (512)@@285.773@@40.19x
+[a-z]+_512@@[a-z]+@@7.82248@@Lowercase plus (512)@@146.779@@18.76x
+a*_64@@a*@@1.35189@@Single a star (64)@@18.5928@@13.75x
+a+_64@@a+@@1.5678@@Single a plus (64)@@36.5982@@23.34x
+a*_128@@a*@@3.6856@@Single a star (128)@@36.4025@@9.88x
+a*_32@@a*@@2.23729@@Single char a star@@9.58198@@4.28x
+a+_32@@a+@@2.21111@@Single char a plus@@18.3116@@8.28x
+a*_64@@a*@@1.35179@@Single a star (64)@@18.6435@@13.79x
+a+_64@@a+@@3.13599@@Single a plus (64)@@35.8942@@11.45x
+b*_32@@b*@@2.2373@@Single char b star@@18.7374@@8.38x
+b+_32@@b+@@1.13539@@Single char b plus@@18.4231@@16.23x
+char_literal_32@@[a-z]shing@@0.5269@@Char class + literal: [a-z]shing@@0.70229@@1.33x
+complex_alt@@Huck[a-zA-Z]+|Saw[a-zA-Z]+@@11.265@@Complex alternation@@8.88539@@0.79x
+group_alt@@([A-Za-z]awyer|[A-Za-z]inn)\s@@1.9926@@Group alternation@@1.89209@@0.95x
+literal_Twain@@Twain@@1.1197@@Literal: Twain@@1.13799@@1.02x
+long_range_1@@Tom.{10,25}river@@5.48269@@Long range: Tom...river@@14.206@@2.59x
+negated_class@@[a-q][^u-z]{13}x@@8.53878@@Negated char class pattern@@4.18949@@0.49x
+suffix_ing@@[a-zA-Z]+ing@@12.594@@Suffix matching: *ing@@32.4998@@2.58x
+whitespace_ing@@\s[a-zA-Z]{0,12}ing\s@@6.02618@@Whitespace + char class@@5.75848@@0.96x
+z*_32@@z*@@2.23739@@Single char z star@@18.9828@@8.48x
+z+_32@@z+@@2.21109@@Single char z plus@@36.1051@@16.33x
+z*_32@@z*@@2.23739@@Single char z star@@9.57908@@4.28x
+z+_32@@z+@@2.21109@@Single char z plus@@18.309@@8.28x
