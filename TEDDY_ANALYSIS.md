@@ -30,19 +30,19 @@
 Step 1: Extract first bytes
   literals: ["foo", "bar", "baz"]
   first_bytes: ['f', 'b', 'b']
-  
+
 Step 2: Build lookup table (mask)
   mask['f'] = 0b001  (pattern 0)
   mask['b'] = 0b110  (patterns 1 and 2)
-  
+
 Step 3: SIMD scan (per 16 bytes)
   input: "hello bar world"
   positions: 0-15
-  
+
   Use pshufb to look up all 16 positions at once:
     → Finds 'b' at position 6
     → mask['b'] = 0b110 (could be "bar" or "baz")
-    
+
 Step 4: Verify
   Check position 6-8: "bar" ✓ MATCH!
 ```
@@ -265,7 +265,7 @@ With Teddy:
     Position 0: 'H' → mask says "could be Huckleberry"
     Verify: "Huckleberry" == "Huckleberry" → MATCH!
   Performance: Est. 5-10x faster! 🔥
-  
+
 Speedup: Could go from 1.00x → 5-10x!
 ```
 
@@ -286,7 +286,7 @@ With Teddy + SIMD:
     Found "Huck" at position 0
   Match [a-zA-Z]+ with SIMD: (same as current)
   Performance: Est. 2-5x faster! 🔥
-  
+
 Speedup: Could go from 1.77x → 3-8x!
 ```
 
@@ -397,4 +397,3 @@ Small average improvement, but BIG wins for literal alternations!
 **Better approach**: Optimize BitNFA for literals first (simpler, 80% of benefit)
 
 **Want me to implement the BitNFA optimization?** I can show you how to get 2-5x on `alternation_4` with just 100-200 lines! 🚀
-

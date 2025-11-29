@@ -15,6 +15,7 @@
 #include "pattern_traits.hpp"
 #include "simd_acceleration.hpp"
 #include "specialized_matchers.hpp"
+#include "literal_fast_path.hpp"
 
 // Phase 3: Runtime String Matching API
 // match(), search(), find_all() functions for BitNFA
@@ -76,6 +77,18 @@ inline match_result match(std::string_view input) {
             bool matched = fast_match(input, static_cast<AST*>(nullptr));
             return {0, matched ? input.size() : size_t(0), matched};
         }
+    }
+
+    // NEW: Fast path for literal alternations (foo|bar|baz)
+    // This is our BitNFA optimization with Teddy-ready architecture!
+    if constexpr (is_literal_alternation<AST>::value) {
+        constexpr auto literals = get_literals_if_applicable<AST>();
+        size_t match_len = 0;
+        int idx = match_literal_alternation(input, literals, &match_len);
+        if (idx >= 0) {
+            return {0, match_len, true};
+        }
+        return {0, 0, false};
     }
 
     // For patterns with character classes or repetitions: delegate to CTRE (has SIMD!)

@@ -10,33 +10,33 @@ import sys
 
 def analyze_for_teddy(pattern):
     """Determine if a pattern would benefit from Teddy."""
-    
+
     # Teddy benefits:
     # 1. Pure literal alternations: "foo|bar|baz"
     # 2. Prefix literals in alternations: "foo[a-z]+|bar[0-9]+"
-    
+
     # Check for alternations
     if '|' not in pattern:
         return None, "No alternation"
-    
+
     # Split by | to get branches
     branches = pattern.split('|')
-    
+
     # Analyze each branch
     pure_literals = []
     has_prefix_literals = []
-    
+
     for branch in branches:
         # Remove capture groups for analysis
         branch_clean = re.sub(r'[()]', '', branch)
-        
+
         # Check if it's a pure literal (just letters/chars, no special regex)
         if re.match(r'^[a-zA-Z]+$', branch_clean):
             pure_literals.append(branch_clean)
         # Check if it has a literal prefix
         elif match := re.match(r'^([a-zA-Z]{2,})', branch_clean):
             has_prefix_literals.append(match.group(1))
-    
+
     # Determine benefit level
     if len(pure_literals) == len(branches):
         return "HIGH", f"Pure literal alternation: {len(pure_literals)} literals"
@@ -52,14 +52,14 @@ def main():
     print()
     print("Teddy is SIMD algorithm for multi-substring search (literal alternations).")
     print()
-    
+
     # Parse master_benchmark.cpp
     patterns = {}
-    
+
     try:
         with open('tests/master_benchmark.cpp', 'r') as f:
             content = f.read()
-            
+
             # Find all BENCH() calls
             bench_pattern = r'BENCH\("([^"]+)",\s*"([^"]+)"'
             for match in re.finditer(bench_pattern, content):
@@ -69,30 +69,30 @@ def main():
     except FileNotFoundError:
         print("Error: Could not find tests/master_benchmark.cpp")
         return 1
-    
+
     # Analyze each pattern
     teddy_candidates = {
         "HIGH": [],
         "MEDIUM": [],
         "LOW": []
     }
-    
+
     non_alternations = []
-    
+
     for name, pattern in sorted(patterns.items()):
         benefit, reason = analyze_for_teddy(pattern)
-        
+
         if benefit:
             teddy_candidates[benefit].append((name, pattern, reason))
         else:
             non_alternations.append((name, pattern))
-    
+
     # Display results
     print("═══════════════════════════════════════════════════════════════════════")
     print(" HIGH BENEFIT (Pure Literal Alternations)")
     print("═══════════════════════════════════════════════════════════════════════")
     print()
-    
+
     if teddy_candidates["HIGH"]:
         for name, pattern, reason in teddy_candidates["HIGH"]:
             print(f"✅ {name}")
@@ -103,12 +103,12 @@ def main():
     else:
         print("(No patterns found)")
         print()
-    
+
     print("═══════════════════════════════════════════════════════════════════════")
     print(" MEDIUM BENEFIT (Partial Literal Alternations)")
     print("═══════════════════════════════════════════════════════════════════════")
     print()
-    
+
     if teddy_candidates["MEDIUM"]:
         for name, pattern, reason in teddy_candidates["MEDIUM"]:
             print(f"⚠️  {name}")
@@ -119,12 +119,12 @@ def main():
     else:
         print("(No patterns found)")
         print()
-    
+
     print("═══════════════════════════════════════════════════════════════════════")
     print(" LOW BENEFIT (Complex Alternations)")
     print("═══════════════════════════════════════════════════════════════════════")
     print()
-    
+
     if teddy_candidates["LOW"]:
         for name, pattern, reason in teddy_candidates["LOW"]:
             print(f"❌ {name}")
@@ -134,12 +134,12 @@ def main():
     else:
         print("(No patterns found)")
         print()
-    
+
     # Summary
-    total_alternations = (len(teddy_candidates["HIGH"]) + 
-                         len(teddy_candidates["MEDIUM"]) + 
+    total_alternations = (len(teddy_candidates["HIGH"]) +
+                         len(teddy_candidates["MEDIUM"]) +
                          len(teddy_candidates["LOW"]))
-    
+
     print("═══════════════════════════════════════════════════════════════════════")
     print(" SUMMARY")
     print("═══════════════════════════════════════════════════════════════════════")
@@ -151,10 +151,10 @@ def main():
     print(f"  • LOW benefit: {len(teddy_candidates['LOW'])} patterns")
     print(f"Non-alternations: {len(non_alternations)}")
     print()
-    
+
     high_count = len(teddy_candidates['HIGH'])
     medium_count = len(teddy_candidates['MEDIUM'])
-    
+
     if high_count > 0:
         print("🔥 RECOMMENDATION: Teddy would significantly benefit:")
         for name, _, _ in teddy_candidates["HIGH"]:
@@ -163,22 +163,21 @@ def main():
         print(f"   Expected impact: {high_count} patterns → 3-10x faster!")
         print(f"   Average improvement: +{high_count * 5 / len(patterns):.2f}x overall")
         print()
-    
+
     if medium_count > 0:
         print("⚠️  Partial benefit for:")
         for name, _, _ in teddy_candidates["MEDIUM"]:
             print(f"   • {name} (prefix literals)")
         print()
-    
+
     if high_count == 0 and medium_count == 0:
         print("❌ LIMITED BENEFIT: Few patterns would benefit from Teddy.")
         print("   Consider optimizing BitNFA instead for alternations.")
         print()
-    
+
     print("═══════════════════════════════════════════════════════════════════════")
-    
+
     return 0
 
 if __name__ == '__main__':
     sys.exit(main())
-

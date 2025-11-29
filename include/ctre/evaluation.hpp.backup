@@ -507,7 +507,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     const auto remaining = last - current;
                     constexpr bool use_simd = true;
                     if constexpr ((!has_gaps || is_negated) && use_simd) {
-                        if (remaining >= 16) {
+                        if (remaining >= 28) {
                             // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                             // We can now safely process high-bit characters (0x80-0xFF)
                             Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
@@ -519,7 +519,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                 } else {
                     // For patterns without min_char/max_char, use SIMD if input is large enough
                     const auto remaining = last - current;
-                    if (remaining >= 16) {
+                    if (remaining >= 28) {
                         Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                         if (simd_result != current) {
                             return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
@@ -713,7 +713,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     const auto remaining = last - current;
                     constexpr bool use_simd = true;
                     if constexpr ((!has_gaps || is_negated) && use_simd) {
-                        if (remaining >= 16) {
+                        if (remaining >= 28) {
                             // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                             // We can now safely process high-bit characters (0x80-0xFF)
                             Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
@@ -725,7 +725,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                 } else {
                     // For patterns without min_char/max_char, use SIMD if input is large enough
                     const auto remaining = last - current;
-                    if (remaining >= 16) {
+                    if (remaining >= 28) {
                         Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                         if (simd_result != current) {
                             return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
