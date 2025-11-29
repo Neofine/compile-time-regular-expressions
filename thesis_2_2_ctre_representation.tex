@@ -70,19 +70,31 @@ SIMD optimization integrates into CTRE's evaluation framework through multiple c
 
 \subsubsection{Dual Evaluation Backend Architecture}
 
-The implementation extends CTRE with two distinct evaluation backends, selected at compile time based on pattern structure:
+The implementation extends CTRE with two distinct evaluation backends, with automatic backend selection occurring transparently within \texttt{ctre::match}. The selection is based on compile-time pattern type analysis.
 
-\paragraph{Base CTRE Evaluation with SIMD Fast Paths}
+\paragraph{Backend Selection in match\_method}
 
-The original CTRE evaluation, implemented in \texttt{evaluation.hpp}, employs direct pattern type interpretation through template recursion. Each pattern type (\texttt{repeat}, \texttt{select}, \texttt{sequence}) has a corresponding \texttt{evaluate()} template specialization that implements matching semantics. Character matching proceeds iteratively, advancing the input iterator as pattern elements are matched.
+The \texttt{match\_method} structure in \texttt{wrapper.hpp} implements automatic backend dispatch:
 
-SIMD optimizations integrate into this evaluation path at specific pattern types. The \texttt{repeat<A, B, set<...>>} specialization contains conditional dispatch to SIMD implementations when pattern traits and input size satisfy vectorization criteria. SIMD functions process multiple characters per iteration, returning an advanced iterator position upon successful match. If SIMD dispatch declines or SIMD matching fails, execution continues with character-by-character scalar iteration within the same evaluation framework.
+\begin{verbatim}
+if constexpr (glushkov::is_select<RE>::value) {
+    // Alternation pattern → BitNFA
+    return bitnfa::match_from_ast<RE>(input);
+} else {
+    // All other patterns → Base evaluation + SIMD
+    return evaluate(...pattern_type_list...);
+}
+\end{verbatim}
 
-\paragraph{BitNFA Backend}
+This dispatch is transparent: users invoke \texttt{ctre::match<"pattern">()}, and the system automatically selects the optimal backend based on pattern type extracted at compile time.
 
-BitNFA provides an alternative evaluation strategy for alternation-dominated patterns (\texttt{select<Opt1, Opt2, ...>}). This backend compiles the pattern AST into a conventional NFA representation with explicit state transitions, then simulates NFA execution using bit-parallel operations. Active NFA states are maintained as a bit vector, with each bit representing one NFA state. State transitions apply simultaneously to all active states via bitwise operations on the state vector.
+\paragraph{Backend 1: Base Evaluation with SIMD}
 
-BitNFA selection occurs at compile time through pattern analysis: patterns containing alternations dispatch to BitNFA via \texttt{bitnfa::match<Pattern>()}, while repetition-dominated patterns use the base CTRE evaluation with SIMD. The \texttt{smart\_dispatch} layer implements this compile-time backend selection based on pattern type classification.
+The primary evaluation path, implemented in \texttt{evaluation.hpp}, interprets pattern types through recursive template instantiation. Each pattern type template (\texttt{repeat}, \texttt{sequence}, \texttt{capture}) has a corresponding \texttt{evaluate()} specialization. SIMD optimizations integrate at the \texttt{repeat<A, B, set<...>>} specialization: compile-time trait extraction determines SIMD applicability, runtime size checks prevent overhead on short inputs, and eligible patterns dispatch to vectorized implementations processing 16-32 characters per iteration. This backend handles repetitions, sequences, literals, captures, and assertions.
+
+\paragraph{Backend 2: BitNFA}
+
+The alternative backend compiles pattern ASTs into explicit NFA representations with enumerated states and transition tables. NFA simulation employs bit-parallel operations: active states are represented as bit vectors, with state transitions applied simultaneously via bitwise operations. This backend is selected for alternation patterns (\texttt{select<Opt1, Opt2, ...>}) where bit-parallel state tracking provides advantages over sequential alternation testing. BitNFA delegates repetition subpatterns back to base CTRE evaluation to exploit SIMD acceleration, avoiding redundant repetition handling implementation.
 
 \subsubsection{SIMD Dispatch Hierarchy}
 

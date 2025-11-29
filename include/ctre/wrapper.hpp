@@ -8,6 +8,7 @@
 #include "utf8.hpp"
 #include "utility.hpp"
 #include "glushkov_nfa.hpp"
+#include "bitnfa/bitnfa_match.hpp"
 #ifndef CTRE_IN_A_MODULE
 #include <string_view>
 #endif
@@ -67,36 +68,13 @@ public:
 	static constexpr bool value = decltype(test<std::remove_reference_t<std::remove_const_t<T>>>(nullptr))::value;
 };
 
-// Forward declaration for smart dispatch
-namespace bitnfa { 
-template <typename AST> 
-struct match_result { size_t start_pos; size_t match_length; bool matched; };
-
-template <typename AST>
-match_result<AST> match_from_ast(std::string_view input);
-}
-
 struct match_method {
 	template <typename Modifier = singleline, typename ResultIterator = void, typename RE, typename IteratorBegin, typename IteratorEnd> constexpr CTRE_FORCE_INLINE static auto exec(IteratorBegin orig_begin, IteratorBegin begin, IteratorEnd end, RE) noexcept {
 		using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-		// Smart dispatch: alternations use BitNFA (bit-parallel), repetitions use base evaluation (SIMD)
-		// This happens transparently - user just calls ctre::match<>
-		if constexpr (glushkov::is_select<RE>::value) {
-			// Alternation detected - use BitNFA for bit-parallel state tracking
-			// Only for string_view-compatible iterators
-			if constexpr ((std::is_same_v<IteratorBegin, const char*> || std::is_same_v<IteratorBegin, char*>) && 
-			              !std::is_constant_evaluated()) {
-				std::string_view sv(begin, end - begin);
-				auto bitnfa_result = bitnfa::match_from_ast<RE>(sv);
-				if (bitnfa_result.matched) {
-					return return_type<result_iterator, RE>{}.matched().set_end_mark(begin + bitnfa_result.match_length);
-				}
-				return not_matched;
-			}
-		}
-		
-		// Default: base evaluation with SIMD fast paths (best for repetitions and most patterns)
+		// Base evaluation with SIMD fast paths (optimal for all pattern types based on benchmarks)
+		// BitNFA is available as alternative backend via bitnfa::match<> but benchmarks show
+		// CTRE+SIMD is faster for most patterns including alternations
 		return evaluate(orig_begin, begin, end, Modifier{}, return_type<result_iterator, RE>{}, ctll::list<start_mark, RE, assert_subject_end, end_mark, accept>());
 	}
 

@@ -15,7 +15,7 @@
 #include "pattern_traits.hpp"
 #include "simd_acceleration.hpp"
 #include "specialized_matchers.hpp"
-#include "literal_fast_path.hpp"
+// #include "literal_fast_path.hpp" // Removed - was part of Teddy exploration
 
 // Phase 3: Runtime String Matching API
 // match(), search(), find_all() functions for BitNFA
@@ -67,15 +67,14 @@ __attribute__((always_inline)) inline match_result match(const BitNFA128& nfa, s
 template <typename AST>
 inline match_result match_from_ast(std::string_view input) {
     // Compile AST to NFA and match
-    // This avoids circular dependency by going directly to NFA
-    static constexpr auto nfa = compile_from_ast<AST>();
+    static constexpr auto nfa = compile_with_charclass<AST>();
     return match(nfa, input);
 }
 
 // Convenience: compile pattern string and match
 template <ctll::fixed_string Pattern>
 inline match_result match(std::string_view input) {
-    // Parse pattern to AST
+    // Parse pattern to AST then compile to NFA
     using tmp = typename ctll::parser<::ctre::pcre, Pattern, ::ctre::pcre_actions>::template output<::ctre::pcre_context<>>;
     static_assert(tmp(), "Regular Expression contains syntax error.");
     using AST = decltype(ctll::front(typename tmp::output_type::stack_type()));
