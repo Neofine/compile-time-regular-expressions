@@ -10,6 +10,7 @@
 #include "simd_character_classes.hpp"
 #include "simd_detection.hpp"
 #include "simd_multirange.hpp"
+#include "simd_pattern_analysis.hpp"
 #include "simd_repetition.hpp"
 #include "simd_shufti.hpp"
 #include "simd_string_matching.hpp"
@@ -453,79 +454,84 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     }
                 }
 
-                // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
-                // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
-                // PERF: Skip SIMD for very small inputs (overhead dominates)
-                const auto remaining_input = last - current;
-                if constexpr (simd::is_multi_range<ContentType>::is_valid) {
-                    if (remaining_input >= 28) {
-                        Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
-                        if (multirange_result != current) {
-                            return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
+                // SIMD optimization: Compile-time suitability check
+                // Skip for: 1) Small bounded reps, 2) Sequence patterns (literal after repeat)
+                // This prevents binary bloat on patterns like IPv4: [0-9]+\.[0-9]+\.
+                constexpr bool has_literal_after = simd::has_literal_next<Tail...>();
+                if constexpr (simd::can_use_simd() &&
+                              (B == 0 || B >= simd::SIMD_REPETITION_THRESHOLD) &&
+                              !has_literal_after) {
+                    // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
+                    // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
+                    const auto remaining_input = last - current;
+                    if constexpr (simd::is_multi_range<ContentType>::is_valid) {
+                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
+                            Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
+                            if (multirange_result != current) {
+                                return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
+                            }
                         }
                     }
-                }
 
-                // Try Shufti for sparse character sets (like [aeiou])
-                if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                    if (remaining_input >= 28) {
-                        Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
-                        if (shufti_result != current) {
-                            return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
+                    // Try Shufti for sparse character sets (like [aeiou])
+                    if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
+                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
+                            Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
+                            if (shufti_result != current) {
+                                return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
+                            }
                         }
                     }
-                }
 
-                // Check range size - balance SIMD overhead vs scalar simplicity
-                if constexpr (requires {
-                                  simd::simd_pattern_trait<ContentType>::min_char;
-                                  simd::simd_pattern_trait<ContentType>::max_char;
-                              }) {
-                    constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
-                    constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
-                    // FIX: Cast to unsigned char to avoid signed overflow in range calculation
-                    constexpr size_t range_size =
-                        static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
-                    constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
+                    // Check range size - balance SIMD overhead vs scalar simplicity
+                    if constexpr (requires {
+                                      simd::simd_pattern_trait<ContentType>::min_char;
+                                      simd::simd_pattern_trait<ContentType>::max_char;
+                                  }) {
+                        constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
+                        constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
+                        // FIX: Cast to unsigned char to avoid signed overflow in range calculation
+                        constexpr size_t range_size =
+                            static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
+                        constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
 
-                    // Gap detection: skip SIMD if char_count < range_size (has gaps)
-                    // Note: Multi-range patterns (handled above) won't reach here
-                    constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
+                        // Gap detection: skip SIMD if char_count < range_size (has gaps)
+                        // Note: Multi-range patterns (handled above) won't reach here
+                        constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-                    // Check if this is a negated range (always use SIMD for negated!)
-                    constexpr bool is_negated = [] {
-                        if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_negated; }) {
-                            return simd::simd_pattern_trait<ContentType>::is_negated;
-                        } else {
-                            return false;
+                        // Check if this is a negated range (always use SIMD for negated!)
+                        constexpr bool is_negated = [] {
+                            if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_negated; }) {
+                                return simd::simd_pattern_trait<ContentType>::is_negated;
+                            } else {
+                                return false;
+                            }
+                        }();
+
+                        // PERF: Skip SIMD for very small inputs (overhead dominates)
+                        const auto remaining = last - current;
+                        constexpr bool use_simd = true;
+                        if constexpr ((!has_gaps || is_negated) && use_simd) {
+                            if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
+                                // FIX: Removed is_ascii_range check - overflow bug is now fixed!
+                                // We can now safely process high-bit characters (0x80-0xFF)
+                                Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+                                if (simd_result != current) {
+                                    return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+                                }
+                            }
                         }
-                    }();
-
-                    // PERF: Skip SIMD for very small inputs (overhead dominates)
-                    // For inputs <28 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
-                    // 28 bytes = conservative threshold that avoids regressions on complex patterns
-                    const auto remaining = last - current;
-                    constexpr bool use_simd = true;
-                    if constexpr ((!has_gaps || is_negated) && use_simd) {
-                        if (remaining >= 16) {
-                            // FIX: Removed is_ascii_range check - overflow bug is now fixed!
-                            // We can now safely process high-bit characters (0x80-0xFF)
+                    } else {
+                        // For patterns without min_char/max_char, use SIMD if input is large enough
+                        const auto remaining = last - current;
+                        if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                             Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                             if (simd_result != current) {
                                 return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
                             }
                         }
                     }
-                } else {
-                    // For patterns without min_char/max_char, use SIMD if input is large enough
-                    const auto remaining = last - current;
-                    if (remaining >= 16) {
-                        Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-                        if (simd_result != current) {
-                            return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-                        }
-                    }
-                }
+                } // End: if constexpr (B == 0 || B >= threshold)
             }
         }
     }
@@ -659,79 +665,86 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                         return not_matched;
                     }
                 }
-                // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
-                // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
-                // PERF: Skip SIMD for very small inputs (overhead dominates)
-                const auto remaining_input = last - current;
-                if constexpr (simd::is_multi_range<ContentType>::is_valid) {
-                    if (remaining_input >= 28) {
-                        Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
-                        if (multirange_result != current) {
-                            return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
+                // SIMD optimization: Compile-time suitability check
+                // Skip for: 1) Small bounded reps, 2) Sequence patterns (literal after repeat)
+                // This prevents binary bloat on patterns like IPv4: [0-9]+\.[0-9]+\.
+                constexpr bool has_literal_after = simd::has_literal_next<Tail...>();
+                if constexpr (simd::can_use_simd() &&
+                              (B == 0 || B >= simd::SIMD_REPETITION_THRESHOLD) &&
+                              !has_literal_after) {
+                    // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
+                    // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
+                    const auto remaining_input = last - current;
+                    if constexpr (simd::is_multi_range<ContentType>::is_valid) {
+                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
+                            Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
+                            if (multirange_result != current) {
+                                return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
+                            }
+                            }
                         }
-                    }
-                }
 
-                // Try Shufti for sparse character sets (like [aeiou])
-                if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                    if (remaining_input >= 28) {
-                        Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
-                        if (shufti_result != current) {
-                            return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
+                    // Try Shufti for sparse character sets (like [aeiou])
+                    if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
+                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
+                            Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
+                            if (shufti_result != current) {
+                                return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
+                            }
+                            }
                         }
-                    }
-                }
 
-                // Check range size - balance SIMD overhead vs scalar simplicity
-                if constexpr (requires {
-                                  simd::simd_pattern_trait<ContentType>::min_char;
-                                  simd::simd_pattern_trait<ContentType>::max_char;
-                              }) {
-                    constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
-                    constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
-                    // FIX: Cast to unsigned char to avoid signed overflow in range calculation
-                    constexpr size_t range_size =
-                        static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
-                    constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
+                    // Check range size - balance SIMD overhead vs scalar simplicity
+                    if constexpr (requires {
+                                      simd::simd_pattern_trait<ContentType>::min_char;
+                                      simd::simd_pattern_trait<ContentType>::max_char;
+                                  }) {
+                        constexpr char min_char = simd::simd_pattern_trait<ContentType>::min_char;
+                        constexpr char max_char = simd::simd_pattern_trait<ContentType>::max_char;
+                        // FIX: Cast to unsigned char to avoid signed overflow in range calculation
+                        constexpr size_t range_size =
+                            static_cast<unsigned char>(max_char) - static_cast<unsigned char>(min_char) + 1;
+                        constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
 
-                    // Gap detection: skip SIMD if char_count < range_size (has gaps)
+                        // Gap detection: skip SIMD if char_count < range_size (has gaps)
                     // Note: Multi-range patterns (handled above) won't reach here
-                    constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
+                        constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
-                    // Check if this is a negated range (always use SIMD for negated!)
-                    constexpr bool is_negated = [] {
-                        if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_negated; }) {
-                            return simd::simd_pattern_trait<ContentType>::is_negated;
-                        } else {
-                            return false;
-                        }
-                    }();
+                        // Check if this is a negated range (always use SIMD for negated!)
+                        constexpr bool is_negated = [] {
+                            if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_negated; }) {
+                                return simd::simd_pattern_trait<ContentType>::is_negated;
+                            } else {
+                                return false;
+                            }
+                            }();
 
-                    // PERF: Skip SIMD for very small inputs (overhead dominates)
+                        // PERF: Skip SIMD for very small inputs (overhead dominates)
                     // For inputs <28 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
                     // 28 bytes = conservative threshold that avoids regressions on complex patterns
-                    const auto remaining = last - current;
-                    constexpr bool use_simd = true;
-                    if constexpr ((!has_gaps || is_negated) && use_simd) {
-                        if (remaining >= 16) {
-                            // FIX: Removed is_ascii_range check - overflow bug is now fixed!
+                        const auto remaining = last - current;
+                        constexpr bool use_simd = true;
+                        if constexpr ((!has_gaps || is_negated) && use_simd) {
+                            if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
+                                // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                             // We can now safely process high-bit characters (0x80-0xFF)
+                                Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+                                if (simd_result != current) {
+                                    return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+                            }
+                            }
+                            }
+                        } else {
+                        // For patterns without min_char/max_char, use SIMD if input is large enough
+                        const auto remaining = last - current;
+                        if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                             Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                             if (simd_result != current) {
                                 return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
                             }
+                            }
                         }
-                    }
-                } else {
-                    // For patterns without min_char/max_char, use SIMD if input is large enough
-                    const auto remaining = last - current;
-                    if (remaining >= 16) {
-                        Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-                        if (simd_result != current) {
-                            return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-                        }
-                    }
-                }
+                } // End: if constexpr (B == 0 || B >= threshold)
             }
         }
     }

@@ -99,29 +99,44 @@ struct BitNFA {
     }
 
     // Calculate successor states (core Algorithm 2)
+    // OPTIMIZED: Reduced branching, fast path for no exceptions
     // This combines shift masks, exception handling, and reachability filtering
-    __attribute__((always_inline)) inline StateMask128 calculate_successors(const StateMask128& current_states, char c) const {
+    __attribute__((always_inline, hot)) inline StateMask128 calculate_successors(const StateMask128& current_states, char c) const {
         // Step 1: Calculate typical successors using shift masks
         StateMask128 typical_succ = shift_masks.calculate_successors(current_states);
 
-        // Step 2: Calculate exception successors
-        StateMask128 exception_succ;
-        if ((current_states & exception_mask).any()) {
-            // We have some exception states active
+        // Step 2: Calculate exception successors (optimized)
+        // OPTIMIZATION: Skip exception handling if no exceptions exist (compile-time check possible)
+        StateMask128 all_succ = typical_succ;
+
+        if (__builtin_expect((current_states & exception_mask).any(), 0)) {
+            // We have some exception states active (rare path)
             StateMask128 exception_states = current_states & exception_mask;
 
-            // For each exception state, OR in its successors
-            for (size_t state = 0; state < state_count; ++state) {
-                if (exception_states.test(state)) {
-                    exception_succ = exception_succ | exception_successors[state];
-                }
+            // OPTIMIZATION: Use __builtin_ctz to find set bits instead of testing all states
+            uint64_t low = exception_states.get_low();
+            uint64_t high = exception_states.get_high();
+
+            StateMask128 exception_succ;
+
+            // Process low 64 bits
+            while (low) {
+                int state = __builtin_ctzll(low);
+                exception_succ = exception_succ | exception_successors[state];
+                low &= (low - 1); // Clear lowest set bit
             }
+
+            // Process high 64 bits
+            while (high) {
+                int state = 64 + __builtin_ctzll(high);
+                exception_succ = exception_succ | exception_successors[state];
+                high &= (high - 1); // Clear lowest set bit
+            }
+
+            all_succ = typical_succ | exception_succ;
         }
 
-        // Step 3: Combine typical and exception successors
-        StateMask128 all_succ = typical_succ | exception_succ;
-
-        // Step 4: Filter by reachability with character c
+        // Step 3: Filter by reachability with character c
         StateMask128 filtered = reachability.filter_by_char(all_succ, c);
 
         return filtered;

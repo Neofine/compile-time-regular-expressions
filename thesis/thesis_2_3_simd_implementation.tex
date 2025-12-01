@@ -1,0 +1,215 @@
+\section{SIMD-Accelerated Matching Implementation}
+\label{sec:simd-implementation}
+
+This section describes the vectorisation strategies investigated and the rationale for their selective application. The implementation maintains CTRE's compile-time analysis model while integrating runtime vectorisation where empirically beneficial.
+
+\subsection{Pattern Analysis and Execution Path Selection}
+
+The matching pipeline employs compile-time pattern analysis to determine execution strategy. Analysis extracts pattern characteristics without runtime overhead via \texttt{constexpr} evaluation and \texttt{if constexpr} dispatch.
+
+Pattern classification identifies:
+\begin{itemize}
+\item Character classes (\texttt{[a-z]}, \texttt{[0-9]}): Candidates for SIMD range comparison
+\item Quantified repetitions (\texttt{a+}, \texttt{[a-z]*}): Candidates for vectorised bulk processing
+\item Alternations (\texttt{(A|B|C)}): Evaluated for bit-parallel NFA representation
+\item Complex constructs (backreferences, lookahead): Require template evaluation
+\end{itemize}
+
+Dispatch occurs via \texttt{if constexpr}, eliminating inapplicable paths at compile-time. Assembly verification confirms that including analysis infrastructure does not affect code generation for patterns that do not utilize it.
+
+\subsection{Graph-Based Literal Extraction}
+
+The implementation constructs a Glushkov NFA~\cite{glushkov1961} from the pattern AST at compile-time to identify required literals for prefiltering.
+
+\subsubsection{Glushkov NFA Construction}
+The Glushkov construction maps each regex position to an NFA state, computing:
+\begin{itemize}
+\item $\mathit{FIRST}(P)$: States reachable at pattern start
+\item $\mathit{LAST}(P)$: States reachable at pattern end  
+\item $\mathit{FOLLOW}(P, i)$: States reachable after position $i$
+\end{itemize}
+
+The resulting graph structure is \texttt{constexpr}, enabling compile-time traversal for subsequent analysis.
+
+\subsubsection{Dominator Analysis}
+A state $v$ is a \emph{dominator} if all paths from start to accept traverse $v$~\cite{lengauer1979dominator}. The algorithm tests each state by computing reachability with that state removed. Consecutive dominator positions with concrete characters form extractable literals (e.g., ``test'' from \texttt{(foo|bar)test}).
+
+\subsubsection{Region Analysis}
+When dominator analysis yields no literals, region analysis partitions the NFA into alternation branches and identifies common suffixes. This fallback extends coverage to patterns with structural alternations where no single state dominates all paths.
+
+\subsubsection{Prefiltering Integration}
+Extracted literals enable early rejection:
+\begin{verbatim}
+if constexpr (has_prefilter_literal<RE>) {
+    constexpr auto literal = prefilter_literal<RE>;
+    if constexpr (literal.length >= 2) {
+        if (!scan_for_literal(begin, end, literal))
+            return not_matched;
+    }
+}
+\end{verbatim}
+
+The scan employs a naive loop; the compiler may vectorise it. All analysis occurs at compile-time; patterns without extractable literals incur no code path instantiation.
+
+\subsection{BitNFA: Implementation and Empirical Evaluation}
+
+Alternation patterns were hypothesized to benefit from bit-parallel NFA evaluation following Hyperscan's architecture~\cite{wang2019hyperscan}. A complete implementation was developed and empirically evaluated.
+
+\subsubsection{Architecture}
+The BitNFA represents active states as bitmasks, with transitions computed via table lookups and bitwise operations:
+\begin{verbatim}
+StateMask current = nfa.get_initial_state();
+for (char c : input) {
+    current = nfa.calculate_successors(current, c);
+}
+return nfa.has_accept(current);
+\end{verbatim}
+
+NFA construction occurs at compile-time (\texttt{static constexpr}), eliminating construction overhead. Only runtime execution (state transitions) contributes to latency.
+
+\subsubsection{Optimization Investigation}
+Initial implementation exhibited overhead relative to template evaluation. Optimization focused on the \texttt{calculate\_successors} hot path:
+\begin{itemize}
+\item Exception handling: Replaced linear state iteration with bit-scan operations (\texttt{\_\_builtin\_ctzll})
+\item Branch hints: Applied \texttt{\_\_builtin\_expect} for rare exception paths
+\item Pointer optimization: Tested raw pointer arithmetic versus iterators
+\end{itemize}
+
+Bit-scan optimization yielded substantial micro-benchmark improvement by avoiding iteration over inactive states.
+
+\subsubsection{Empirical Evaluation and Analysis}
+Systematic benchmarking across diverse patterns revealed BitNFA unsuitable for CTRE's workload. The fundamental limitation is \emph{execution model mismatch}:
+
+\paragraph{Template Evaluation}
+Compiler generates pattern-specific code: direct character comparisons for literal patterns, specialized SIMD operations for character classes. Per-character cost dominated by data-dependent operations with full compiler optimization (inlining, constant propagation, dead code elimination).
+
+\paragraph{BitNFA Evaluation}
+Generic state machine independent of pattern structure. Per-character cost dominated by state transition logic: reachability table lookups and bitmask operations. These operations persist regardless of optimization, as the state machine must support arbitrary patterns.
+
+\paragraph{Workload Characteristics}
+Hyperscan's deployment context differs fundamentally:
+\begin{itemize}
+\item \textbf{Multi-pattern matching}: Processes hundreds to thousands of patterns simultaneously; CTRE evaluates one pattern per invocation
+\item \textbf{Input scale}: Targets GB-scale streaming where setup overhead amortizes; evaluated workload comprises byte-to-KB scale match operations
+\item \textbf{Optimization metric}: Optimizes throughput (GB/s); CTRE optimizes latency (ns per operation)
+\end{itemize}
+
+Based on empirical evidence showing regression across test patterns, BitNFA dispatch was disabled. The implementation remains in the codebase, demonstrating that technique applicability depends on workload characteristics and execution model, not solely algorithmic correctness.
+
+\subsection{SIMD Character Class Matching}
+
+Character class repetitions (\texttt{[a-z]+}, \texttt{[0-9]*}) constitute the primary vectorisation target and demonstrate empirical benefit.
+
+\subsubsection{Range Comparison Strategy}
+For contiguous ranges \texttt{[a-z]}, AVX2 comparison operations~\cite{intel2024intrinsics} test 32 bytes simultaneously:
+\begin{verbatim}
+__m256i data = _mm256_loadu_si256(ptr);
+__m256i ge_min = _mm256_cmpgt_epi8(data, min-1);
+__m256i le_max = _mm256_cmpgt_epi8(max+1, data);
+__m256i in_range = _mm256_and_si256(ge_min, le_max);
+\end{verbatim}
+
+The implementation processes 64-byte chunks where possible, with interleaved loads and comparisons to maximize instruction-level parallelism~\cite{fog2023optimization}.
+
+\subsubsection{Multi-Range Handling}
+Patterns with multiple disjoint ranges (\texttt{[a-zA-Z0-9]}) combine per-range results via bitwise OR. Negated classes (\texttt{[\^{}a-z]}) test for values outside the range via:
+\begin{verbatim}
+result = _mm256_or_si256(lt_min, gt_max);
+\end{verbatim}
+
+This formulation avoids computing the complement of a large character set.
+
+\subsubsection{Repetition Strategy}
+Quantified patterns (\texttt{+}, \texttt{*}, \texttt{\{m,n\}}) scan input in vectorised chunks:
+\begin{enumerate}
+\item Load 32-byte chunk and apply character class test
+\item If all bytes match: advance pointer by 32
+\item If mismatch detected: identify position via \texttt{\_\_builtin\_ctz} on result bitmask
+\item Repeat until input exhausted or maximum bound reached
+\end{enumerate}
+
+Early exit on mismatch minimizes wasted computation for patterns with strict bounds.
+
+\subsubsection{Threshold Selection}
+SIMD paths activate only for inputs exceeding 16 bytes. Below this threshold, vector operation overhead (loads, mask extraction, branch handling) exceeds scalar evaluation cost. The threshold value was determined empirically by measuring transition points across input sizes.
+
+\subsection{Compile-Time Analysis, Runtime Execution}
+
+The architecture separates compile-time analysis from runtime execution to maintain zero-overhead abstraction.
+
+\subsubsection{Compile-Time Phase}
+Pattern parsing, NFA construction, dominator analysis, and dispatch selection occur during C++ compilation via template metaprogramming and \texttt{constexpr} evaluation. This increases compilation time but eliminates runtime analysis overhead. Complex patterns with deep nesting or many states incur longer compilation; runtime performance remains unaffected.
+
+\subsubsection{Runtime Phase}
+Only the selected execution path instantiates. Patterns unsuitable for SIMD follow the original template evaluation path with no additional code generated. The compiler's dead code elimination ensures unused infrastructure does not appear in final binaries.
+
+\subsubsection{Verification Methodology}
+Zero-overhead claims were verified via assembly analysis:
+\begin{enumerate}
+\item Generate object code with and without SIMD infrastructure headers
+\item Compare instruction sequences via \texttt{objdump -d}
+\item Confirm byte-exact equivalence for patterns not using SIMD paths
+\end{enumerate}
+
+This verification confirms that compile-time analysis imposes no runtime penalty when features are unused.
+
+\subsection{Design Trade-offs}
+
+\subsubsection{Generic versus Specialized Execution}
+The BitNFA investigation demonstrates a fundamental trade-off: generic state machines provide uniform handling of diverse patterns but cannot match pattern-specific generated code performance. Template metaprogramming achieves specialization at the cost of increased compilation complexity and binary size per unique pattern.
+
+This finding has broader implications for regex library design: libraries optimizing for compile-time validation and zero-overhead abstraction benefit from code specialization, while libraries targeting multi-pattern throughput benefit from generic state machine approaches.
+
+\subsubsection{Compile-Time Cost}
+Pattern analysis, particularly Glushkov NFA construction and graph traversal, increases compilation time. The cost scales with pattern complexity (state count, nesting depth). This trade-off favors runtime performance in production deployments where compilation occurs once and execution occurs repeatedly.
+
+\subsubsection{Binary Size}
+SIMD-enabled patterns instantiate vectorised code paths. The \texttt{if constexpr} guards limit this growth to patterns demonstrating empirical benefit. Patterns unsuitable for SIMD do not instantiate unused code paths, maintaining minimal binary footprint.
+
+\subsubsection{Portability}
+SIMD intrinsics require architecture-specific implementations. The implementation provides:
+\begin{itemize}
+\item x86-64: SSE2, AVX2 paths with compile-time detection
+\item Portable fallback: Scalar evaluation for all platforms
+\item Graceful degradation: Patterns execute correctly without SIMD support
+\end{itemize}
+
+This ensures correctness across deployment environments while enabling acceleration where available.
+
+\subsection{Summary}
+
+The SIMD-accelerated matching implementation integrates vectorisation into CTRE's template-based evaluation through compile-time pattern classification, selective SIMD dispatch, and graph-based analysis for literal extraction. The empirical evaluation of alternative approaches, particularly BitNFA, demonstrates that optimization technique selection must account for execution model characteristics and workload context. The implementation preserves CTRE's zero-overhead abstraction guarantee while enabling vectorisation for patterns with suitable structure.
+
+\begin{thebibliography}{9}
+
+\bibitem{wang2019hyperscan}
+Wang, X., Hong, Y., Chang, H., Park, K. Y., Langston, G., Hu, J., and Sun, H.
+\textit{Hyperscan: A Fast Multi-Pattern Regex Matcher for Modern CPUs.}
+USENIX NSDI, 2019.
+\url{https://www.usenix.org/system/files/nsdi19-wang-xiang.pdf}
+
+\bibitem{glushkov1961}
+Glushkov, V. M.
+\textit{The Abstract Theory of Automata.}
+Russian Mathematical Surveys, 16(5):1--53, 1961.
+
+\bibitem{lengauer1979dominator}
+Lengauer, T. and Tarjan, R. E.
+\textit{A Fast Algorithm for Finding Dominators in a Flowgraph.}
+ACM Transactions on Programming Languages and Systems, 1(1):121--141, 1979.
+
+\bibitem{intel2024intrinsics}
+Intel Corporation.
+\textit{Intel Intrinsics Guide.}
+\url{https://www.intel.com/content/www/us/en/docs/intrinsics-guide/}
+Accessed: 2025.
+
+\bibitem{fog2023optimization}
+Fog, A.
+\textit{Optimizing Software in C++: An Optimization Guide for Windows, Linux and Mac Platforms.}
+Technical University of Denmark, 2023.
+\url{https://www.agner.org/optimize/}
+
+\end{thebibliography}
+
+

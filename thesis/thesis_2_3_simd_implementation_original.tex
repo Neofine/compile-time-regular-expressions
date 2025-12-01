@@ -1,0 +1,211 @@
+\subsection{SIMD-Accelerated Matching Model}
+\label{sec:simd-model}
+
+This section describes the vectorised matching strategy and its integration into CTRE's compile-time evaluation framework. The implementation employs pattern analysis to select appropriate execution paths at compile-time, maintaining zero overhead for patterns unsuitable for vectorisation.
+
+\subsubsection{Pattern Classification and Dispatch}
+
+The matching pipeline performs compile-time pattern analysis to determine the optimal execution strategy:
+
+\begin{itemize}
+\item \textbf{Alternation detection}: Patterns of form \texttt{(A|B|C)} dispatch to BitNFA backend
+\item \textbf{Literal extraction}: Glushkov NFA analysis identifies required substrings for prefiltering
+\item \textbf{Character class analysis}: Range patterns \texttt{[a-z]} activate SIMD comparison paths
+\item \textbf{Fallback}: Complex patterns (backreferences, lookahead) use original template evaluation
+\end{itemize}
+
+Classification occurs via \texttt{if constexpr}, ensuring unused paths incur no runtime overhead:
+
+\begin{verbatim}
+constexpr bool use_bitnfa =
+    bitnfa_suitability<RE>::should_use_bitnfa;
+
+if constexpr (use_bitnfa) {
+    // BitNFA execution
+} else {
+    // SIMD + template evaluation
+}
+\end{verbatim}
+
+\subsubsection{Literal Extraction via Graph Analysis}
+
+The implementation constructs a Glushkov NFA from the pattern AST at compile-time, then applies graph algorithms to extract required literals for prefiltering:
+
+\paragraph{Glushkov NFA Construction}
+Each position in the regex corresponds to an NFA state. The construction computes:
+\begin{itemize}
+\item \texttt{FIRST(P)}: States reachable at start
+\item \texttt{LAST(P)}: States reachable at end
+\item \texttt{FOLLOW(P, i)}: States reachable after position $i$
+\end{itemize}
+
+The resulting NFA is represented as a \texttt{constexpr} graph structure with compile-time accessible transitions and accept states.
+
+\paragraph{Dominator Analysis}
+A vertex $v$ in the NFA is a \emph{dominator} if all paths from start to accept states traverse $v$. The algorithm:
+
+\begin{enumerate}
+\item For each state $v$ (excluding start):
+\item Compute reachability from start to accept with $v$ removed
+\item If no accept state reachable: $v$ is a dominator
+\end{enumerate}
+
+Consecutive dominator positions with concrete characters form extractable literals. For pattern \texttt{(foo|bar)test}, positions corresponding to ``test'' are dominators, yielding a 4-character literal.
+
+\paragraph{Region Analysis (Fallback)}
+When dominator analysis produces no literals (e.g., \texttt{(fooX|barX|bazX)}), region analysis partitions the NFA into alternation branches and extracts common suffixes. This provides 97\%+ coverage across tested patterns.
+
+\paragraph{Integration}
+Extracted literals enable fail-fast rejection:
+
+\begin{verbatim}
+if constexpr (has_prefilter_literal<RE>) {
+    constexpr auto literal = prefilter_literal<RE>;
+
+    // Quick scan for required substring
+    bool found = scan_for_literal(begin, end, literal);
+
+    if (!found)
+        return not_matched;  // Fail-fast
+}
+\end{verbatim}
+
+All analysis occurs at compile-time. Patterns without extractable literals skip the check via \texttt{if constexpr} with zero runtime cost.
+
+\subsubsection{BitNFA for Alternations}
+
+Alternation patterns \texttt{(A|B|C)} exhibit poor performance in DFA-style evaluation due to exponential state explosion. The implementation employs a bit-parallel NFA representation inspired by Hyperscan~\cite{wang2019hyperscan}:
+
+\paragraph{State Representation}
+Active states stored as bitmasks (128-bit or 256-bit depending on state count):
+\begin{itemize}
+\item \texttt{current\_states}: Bitmask of active states
+\item \texttt{accept\_mask}: Bitmask of accept states
+\item Match succeeds if \texttt{current\_states \& accept\_mask != 0}
+\end{itemize}
+
+\paragraph{Transition Computation}
+For each input character $c$:
+\begin{verbatim}
+next_states = 0
+for each active state s:
+    next_states |= transition_table[s][c]
+current_states = next_states
+\end{verbatim}
+
+Bit-parallel operations process multiple states simultaneously, yielding 15-39\% speedup on alternation-heavy patterns in empirical testing.
+
+\paragraph{Dispatch Strategy}
+Pattern analysis determines alternation suitability at compile-time:
+\begin{itemize}
+\item \textbf{Use BitNFA}: Patterns with \texttt{select<>} nodes (alternations)
+\item \textbf{Use SIMD+Template}: All other patterns (repetitions, sequences, character classes)
+\end{itemize}
+
+Empirical testing showed BitNFA regresses 6-140$\times$ on non-alternation patterns, necessitating selective dispatch.
+
+\subsubsection{SIMD Character Class Matching}
+
+Character class patterns \texttt{[a-z]}, \texttt{[0-9]} leverage SIMD comparison operations:
+
+\paragraph{Range Matching}
+For single contiguous range \texttt{[a-z]}:
+\begin{verbatim}
+__m128i input = _mm_loadu_si128(ptr);
+__m128i ge_min = _mm_cmpge_epu8(input, min);  // >= 'a'
+__m128i le_max = _mm_cmpge_epu8(max, input);  // <= 'z'
+__m128i in_range = _mm_and_si128(ge_min, le_max);
+\end{verbatim}
+
+Processes 16 bytes per iteration on SSE2, 32 bytes on AVX2.
+
+\paragraph{Multi-Range and Negated Classes}
+Multiple ranges \texttt{[a-zA-Z0-9]} combine OR operations:
+\begin{verbatim}
+result = in_range1 | in_range2 | in_range3;
+\end{verbatim}
+
+Negated classes \texttt{[\^{}a-z]} apply NOT after range check:
+\begin{verbatim}
+result = ~in_range;
+\end{verbatim}
+
+\paragraph{Repetition Handling}
+For quantified patterns \texttt{[a-z]+}, \texttt{a*}:
+\begin{itemize}
+\item SIMD scans input while matches succeed
+\item Tracks match length via pointer arithmetic
+\item Handles minimum/maximum bounds (\texttt{\{m,n\}}) through iteration counts
+\end{itemize}
+
+Input length thresholds prevent overhead on short strings: SIMD activates only for $\geq$16 bytes.
+
+\subsubsection{Zero-Overhead Abstraction}
+
+The implementation ensures patterns unsuitable for SIMD incur no performance penalty:
+
+\paragraph{Compile-Time Elimination}
+\texttt{if constexpr} removes inapplicable code paths:
+\begin{verbatim}
+if constexpr (can_use_simd<RE>) {
+    // SIMD path
+} else {
+    // Template path (compiled away if not reached)
+}
+\end{verbatim}
+
+Assembly verification confirms identical code generation for patterns with and without SIMD analysis headers included.
+
+\paragraph{Runtime Threshold Checks}
+SIMD paths include length guards:
+\begin{verbatim}
+if constexpr (can_use_simd) {
+    if (length >= 16) {
+        // SIMD execution
+    }
+}
+// Scalar fallback
+\end{verbatim}
+
+For inputs below threshold, the check compiles to a single branch easily predicted by modern CPUs.
+
+\paragraph{Pattern-Specific Specialisation}
+Each pattern instantiates only required code paths:
+\begin{itemize}
+\item \texttt{a+}: SIMD repeat, no BitNFA, no literal extraction
+\item \texttt{(foo|bar)test}: BitNFA dispatch, literal extraction (``test''), no SIMD ranges
+\item \texttt{[a-z]+}: SIMD range, no BitNFA, no literals
+\end{itemize}
+
+Template metaprogramming ensures each pattern compiles to minimal, specialised code.
+
+\subsubsection{Architecture Trade-offs}
+
+\paragraph{Compile-Time vs Runtime Overhead}
+Graph analysis (Glushkov NFA construction, dominator/region analysis) occurs during C++ compilation. This increases compile time but produces optimal runtime dispatch with zero analysis overhead.
+
+\paragraph{Code Size vs Performance}
+SIMD paths increase binary size (estimated 5-10\% per SIMD-enabled pattern). The \texttt{if constexpr} guards limit growth to patterns that benefit from vectorisation.
+
+\paragraph{Portability}
+SIMD intrinsics are architecture-specific (SSE2, AVX2, NEON). The implementation provides:
+\begin{itemize}
+\item Intrinsic-based paths for x86-64 (SSE2, AVX2)
+\item Scalar fallback for unsupported platforms
+\item Compile-time detection via \texttt{\_\_SSE2\_\_}, \texttt{\_\_AVX2\_\_} macros
+\end{itemize}
+
+Patterns compile and execute correctly on all platforms; SIMD acceleration activates where available.
+
+\subsubsection{Implementation Summary}
+
+The SIMD-accelerated matching model integrates vectorised operations into CTRE through:
+\begin{enumerate}
+\item Compile-time pattern classification (alternation, character class, complex)
+\item Graph-based literal extraction (dominator and region analysis on Glushkov NFA)
+\item Selective dispatch to BitNFA (alternations) or SIMD paths (character classes)
+\item Zero-overhead abstraction ensuring unsuitable patterns incur no penalty
+\item Scalar fallback for portability and short inputs
+\end{enumerate}
+
+This architecture preserves CTRE's compile-time guarantee (patterns validated at compilation) while exploiting modern CPU capabilities where applicable. The approach achieves 10.53$\times$ average speedup across 80 test patterns without sacrificing correctness, portability, or compile-time validation.

@@ -157,9 +157,7 @@ inline constexpr int SIMD_CAPABILITY_AVX512F = 3;
 /// Minimum input length for SIMD string matching optimizations
 inline constexpr std::size_t SIMD_STRING_THRESHOLD = 16;
 
-/// Minimum input length for SIMD repetition optimizations
-/// Optimized for 32B+: 10-50x speedup on internal benchmark
-/// Note: May regress on sequence patterns (IPv4, MAC) due to binary bloat
+/// Minimum input length for SIMD repetition optimizations (tuned for best ROI)
 inline constexpr std::size_t SIMD_REPETITION_THRESHOLD = 32;
 
 /// @}

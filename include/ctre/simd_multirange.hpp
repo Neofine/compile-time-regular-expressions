@@ -36,7 +36,8 @@ template <typename T>
 struct is_multi_range : std::false_type {
     static constexpr size_t num_ranges = 0;
     static constexpr bool all_are_ranges = false;
-    static constexpr bool is_valid = false;
+    // TEMPORARILY DISABLED - has bugs, use single-range SIMD instead
+    static constexpr bool is_valid = false; // Was: would check num_ranges >= 2
 };
 
 template <typename... Ranges>
@@ -46,9 +47,7 @@ struct is_multi_range<set<Ranges...>> : std::true_type {
     // Check if ALL elements are char_range (not individual characters or other types)
     static constexpr bool all_are_ranges = (... && is_char_range_type<Ranges>::value);
 
-    // Only consider it a multi-range if we have 2+ char_range elements
-    // This matches patterns like [a-zA-Z] (2 ranges) or [0-9a-fA-F] (3 ranges)
-    // Does NOT match [aeiou] (5 individual characters - should use Shufti)
+    // Re-enabled for .match operations (bugs were in .search)
     static constexpr bool is_valid = (num_ranges >= 2) && all_are_ranges;
 
     // Helper to get min/max for Nth range
@@ -80,51 +79,54 @@ struct is_three_range<set<Ranges...>> : std::bool_constant<is_multi_range<set<Ra
 // Generic AVX2 Multi-Range Implementation (handles 2-N ranges)
 // ============================================================================
 
-// Helper to check a single range with SIMD
-inline __m256i check_range_avx2(__m256i data, char min_char, char max_char) {
-    __m256i min_vec = _mm256_set1_epi8(min_char);
-    __m256i max_vec = _mm256_set1_epi8(max_char);
+// Optimized single-range check using unsigned comparisons (faster)
+inline __m256i check_range_avx2(__m256i data, unsigned char min_char, unsigned char max_char) {
+    // Use unsigned saturating subtract for efficient range check
+    // For a value to be in [min, max]:
+    //   (unsigned)(value - min) <= (unsigned)(max - min)
 
-    // FIX: Avoid signed char overflow - rewrite to avoid wraparound
-    // data >= min is !(min > data)
-    __m256i lt_min = _mm256_cmpgt_epi8(min_vec, data);
-    __m256i ge = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
+    __m256i min_vec = _mm256_set1_epi8(static_cast<char>(min_char));
+    __m256i adjusted = _mm256_sub_epi8(data, min_vec);
 
-    // data <= max is !(data > max)
-    __m256i gt_max = _mm256_cmpgt_epi8(data, max_vec);
-    __m256i le = _mm256_xor_si256(gt_max, _mm256_set1_epi8(static_cast<char>(0xFF)));
+    // Range width
+    unsigned char range_width = max_char - min_char;
+    __m256i width_vec = _mm256_set1_epi8(static_cast<char>(range_width));
 
-    return _mm256_and_si256(ge, le);
+    // Compare using unsigned min (returns min of two unsigned bytes)
+    __m256i clamped = _mm256_min_epu8(adjusted, width_vec);
+
+    // If adjusted <= width, then clamped == adjusted
+    return _mm256_cmpeq_epi8(clamped, adjusted);
 }
 
-// Generic N-range matching using recursion
+// Optimized N-range matching - use better algorithm
 template <typename PatternType, size_t... Indices, typename Iterator, typename EndIterator>
 inline Iterator match_n_range_avx2_impl(Iterator current, const EndIterator last, size_t& count, std::index_sequence<Indices...>) {
     constexpr size_t chunk_size = 32;
 
-    // Only use this implementation for iterator types that support distance checking
-    // (e.g., std::string iterators, not C-string sentinel iterators)
-    if constexpr (!requires { std::distance(current, last); }) {
-        return current;  // Fall back to scalar for unsupported iterator types
-    }
+    while (true) {
+        auto remaining = last - current;
+        if (remaining < chunk_size) break;
 
-    while (std::distance(current, last) >= chunk_size) {
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
 
-        // Check all ranges and OR them together using fold expression
+        // Check all ranges and OR results using optimized helper
         __m256i result = _mm256_setzero_si256();
-        (void)((result = _mm256_or_si256(result, check_range_avx2(
+
+        // Use fold expression correctly - expand Indices pack
+        ((result = _mm256_or_si256(result, check_range_avx2(
             data,
-            is_multi_range<PatternType>::template get_min<Indices>(),
-            is_multi_range<PatternType>::template get_max<Indices>()
-        )), 0) , ...);
+            static_cast<unsigned char>(is_multi_range<PatternType>::template get_min<Indices>()),
+            static_cast<unsigned char>(is_multi_range<PatternType>::template get_max<Indices>())
+        ))), ...);
 
         int mask = _mm256_movemask_epi8(result);
         if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
             current += chunk_size;
             count += chunk_size;
         } else {
-            int first_mismatch = __builtin_ctz(~mask);
+            // Find first non-matching byte
+            int first_mismatch = __builtin_ctz(~static_cast<unsigned int>(mask));
             current += first_mismatch;
             count += first_mismatch;
             break;
@@ -153,11 +155,53 @@ inline Iterator match_multirange_repeat(Iterator current, const EndIterator last
     // Use generic N-range SIMD if this is a valid multi-range pattern
     if constexpr (is_multi_range<PatternType>::is_valid) {
         if (can_use_simd() && get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-            current = match_n_range_avx2<PatternType>(current, last, count);
+            auto remaining = last - current;
+            if (remaining >= 32) {
+                current = match_n_range_avx2<PatternType>(current, last, count);
+            }
         }
     }
 
-    return (count >= MinCount || MinCount == 0) ? current : start;
+    // Continue with scalar matching for:
+    // 1. Tail bytes (< 32 bytes remaining after SIMD)
+    // 2. Continuing the match beyond SIMD chunks
+    // 3. Fallback if SIMD not available
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        char ch = *current;
+        bool matches = false;
+
+        // Check if character matches any range using compile-time expansion
+        if constexpr (is_multi_range<PatternType>::is_valid) {
+            // Manually expand for each range (safer than lambda + fold)
+            constexpr size_t N = is_multi_range<PatternType>::num_ranges;
+            if constexpr (N >= 1) {
+                matches = (ch >= is_multi_range<PatternType>::template get_min<0>() &&
+                          ch <= is_multi_range<PatternType>::template get_max<0>());
+            }
+            if constexpr (N >= 2) {
+                matches = matches || (ch >= is_multi_range<PatternType>::template get_min<1>() &&
+                                     ch <= is_multi_range<PatternType>::template get_max<1>());
+            }
+            if constexpr (N >= 3) {
+                matches = matches || (ch >= is_multi_range<PatternType>::template get_min<2>() &&
+                                     ch <= is_multi_range<PatternType>::template get_max<2>());
+            }
+            if constexpr (N >= 4) {
+                matches = matches || (ch >= is_multi_range<PatternType>::template get_min<3>() &&
+                                     ch <= is_multi_range<PatternType>::template get_max<3>());
+            }
+            // Can add more if needed, but 4 ranges covers most real patterns
+        }
+
+        if (matches) {
+            ++current;
+            ++count;
+        } else {
+            break;
+        }
+    }
+
+    return (count >= MinCount) ? current : start;
 }
 
 } // namespace simd

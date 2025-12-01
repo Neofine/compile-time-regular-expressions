@@ -136,6 +136,7 @@ struct shufti_pattern_trait {
     static constexpr bool is_shufti_optimizable = false;
     static constexpr bool should_use_shufti = false;
     static constexpr bool is_sparse = false;  // Important: track if pattern is sparse
+    static constexpr bool is_negated = false;  // Track if pattern is negated
 };
 
 template <typename... Content>
@@ -145,6 +146,7 @@ struct shufti_pattern_trait<set<Content...>> {
     // Ranges like [a-z], [0-9], [0-9a-f] are better handled by existing SIMD
     static constexpr bool should_use_shufti = false;
     static constexpr bool is_sparse = false;  // Default to not sparse for generic sets
+    static constexpr bool is_negated = false;
 };
 
 template <auto... Cs>
@@ -165,6 +167,20 @@ struct shufti_pattern_trait<set<character<Cs>...>> {
     // Auto-disabled for C-strings (sentinel iterators) to avoid overhead
     static constexpr bool should_use_shufti =
         (num_chars >= 5 && num_chars <= 30) && is_sparse;
+    static constexpr bool is_negated = false;
+};
+
+// Negated sparse character sets - [^aeiou]+, [^02468]+, etc.
+template <auto... Cs>
+struct shufti_pattern_trait<negate<set<character<Cs>...>>> {
+    static constexpr bool is_shufti_optimizable = true;
+    static constexpr size_t num_chars = sizeof...(Cs);
+    static constexpr bool is_sparse = is_sparse_character_set<Cs...>();
+
+    // Enable Shufti for negated sparse sets (use andnot instead of and)
+    static constexpr bool should_use_shufti =
+        (num_chars >= 5 && num_chars <= 30) && is_sparse;
+    static constexpr bool is_negated = true;  // Mark as negated
 };
 
 struct character_class {
@@ -915,6 +931,13 @@ constexpr character_class get_character_class_for_pattern_impl(set<character<Cs>
     return init_from_chars<Cs...>();
 }
 
+// Specialization for negated set<character<C>...> patterns
+template <auto... Cs>
+constexpr character_class get_character_class_for_pattern_impl(negate<set<character<Cs>...>>*) {
+    // For negated patterns, we build the same character class but use it inversely
+    return init_from_chars<Cs...>();
+}
+
 // Get character class for a pattern type
 template <typename PatternType>
 constexpr character_class get_character_class_for_pattern() {
@@ -975,19 +998,37 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, const EndIterator 
 
                 int mask = _mm256_movemask_epi8(combined);
 
-                // All 32 bytes match?
-                if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
-                    // Trust the prefilter for truly sparse patterns (Shufti is designed for this)
-                    // We only use Shufti for patterns with 5-20 chars, which have low false positive rates
-                    p += 32;
-                    count += 32;
-                    remaining -= 32;
+                // Handle negation: [^aeiou]+ checks if bytes DON'T match [aeiou]
+                if constexpr (shufti_pattern_trait<PatternType>::is_negated) {
+                    // Negated: we want bytes that are NOT in the set
+                    // mask shows which bytes ARE in the set
+                    // If mask == 0, none match the set, so all 32 bytes match [^aeiou]+
+                    if (mask == 0) {
+                        // All 32 bytes are NOT in [aeiou], continue matching
+                        p += 32;
+                        count += 32;
+                        remaining -= 32;
+                    } else {
+                        // Some byte(s) ARE in [aeiou], find the first one and stop
+                        int first_match = __builtin_ctz(mask);
+                        count += first_match;
+                        p += first_match;
+                        goto done_avx2;
+                    }
                 } else {
-                    // Find first non-match
-                    int first_nonmatch = __builtin_ctz(~mask);
-                    count += first_nonmatch;
-                    p += first_nonmatch;
-                    goto done_avx2;
+                    // Normal pattern: all 32 bytes match?
+                    if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
+                        // All 32 bytes ARE in the set, continue matching
+                        p += 32;
+                        count += 32;
+                        remaining -= 32;
+                    } else {
+                        // Some byte(s) are NOT in the set, find first non-match
+                        int first_nonmatch = __builtin_ctz(~mask);
+                        count += first_nonmatch;
+                        p += first_nonmatch;
+                        goto done_avx2;
+                    }
                 }
             }
             done_avx2:;
@@ -996,7 +1037,16 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, const EndIterator 
 
         // Process remaining bytes with scalar
         while (remaining > 0 && (MaxCount == 0 || count < MaxCount)) {
-            if (char_class.exact_membership[*p]) {
+            bool matches;
+            if constexpr (shufti_pattern_trait<PatternType>::is_negated) {
+                // Negated pattern: match if NOT in the set
+                matches = !char_class.exact_membership[*p];
+            } else {
+                // Normal pattern: match if in the set
+                matches = char_class.exact_membership[*p];
+            }
+
+            if (matches) {
                 ++p;
                 ++count;
                 --remaining;

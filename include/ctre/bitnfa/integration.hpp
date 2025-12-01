@@ -59,40 +59,36 @@ struct pattern_analysis {
 // =============================================================================
 
 // Match using best engine (BitNFA or standard CTRE)
-template <ctll::fixed_string Pattern>
-constexpr auto match_auto(std::string_view input) {
-    // Parse pattern
-    using tmp = typename ctll::parser<ctre::pcre, Pattern, ctre::pcre_actions>::template output<ctre::pcre_context<>>;
-    static_assert(tmp(), "Regular Expression contains syntax error.");
-    using AST = decltype(ctll::front(typename tmp::output_type::stack_type()));
-
-    // Analyze pattern complexity
-    constexpr bool use_nfa = pattern_analysis<AST>::use_bitnfa;
-
-    if constexpr (use_nfa) {
-        // Use BitNFA for complex patterns
-        return bitnfa::match<Pattern>(input);
-    } else {
-        // Use standard CTRE for simple patterns
-        return ctre::match<Pattern>(input);
-    }
-}
+// NOTE: Disabled due to circular dependency with wrapper.hpp
+// Use smart_dispatch::match() from smart_dispatch.hpp instead
+// template <ctll::fixed_string Pattern>
+// constexpr auto match_auto(std::string_view input) {
+// 	using tmp = typename ctll::parser<ctre::pcre, Pattern, ctre::pcre_actions>::template output<ctre::pcre_context<>>;
+// 	static_assert(tmp(), "Regular Expression contains syntax error.");
+// 	using AST = decltype(ctll::front(typename tmp::output_type::stack_type()));
+// 	constexpr bool use_nfa = pattern_analysis<AST>::use_bitnfa;
+// 	if constexpr (use_nfa) {
+// 		return bitnfa::match<Pattern>(input);
+// 	} else {
+// 		return ctre::match<Pattern>(input);
+// 	}
+// }
 
 // Search using best engine
-template <ctll::fixed_string Pattern>
-constexpr auto search_auto(std::string_view input) {
-    using tmp = typename ctll::parser<ctre::pcre, Pattern, ctre::pcre_actions>::template output<ctre::pcre_context<>>;
-    static_assert(tmp(), "Regular Expression contains syntax error.");
-    using AST = decltype(ctll::front(typename tmp::output_type::stack_type()));
-
-    constexpr bool use_nfa = pattern_analysis<AST>::use_bitnfa;
-
-    if constexpr (use_nfa) {
-        return bitnfa::search<Pattern>(input);
-    } else {
-        return ctre::search<Pattern>(input);
-    }
-}
+// NOTE: Disabled due to circular dependency with wrapper.hpp
+// Use smart_dispatch::search() from smart_dispatch.hpp instead
+// template <ctll::fixed_string Pattern>
+// constexpr auto search_auto(std::string_view input) {
+// 	using tmp = typename ctll::parser<ctre::pcre, Pattern, ctre::pcre_actions>::template output<ctre::pcre_context<>>;
+// 	static_assert(tmp(), "Regular Expression contains syntax error.");
+// 	using AST = decltype(ctll::front(typename tmp::output_type::stack_type()));
+// 	constexpr bool use_nfa = pattern_analysis<AST>::use_bitnfa;
+// 	if constexpr (use_nfa) {
+// 		return bitnfa::search<Pattern>(input);
+// 	} else {
+// 		return ctre::search<Pattern>(input);
+// 	}
+// }
 
 // =============================================================================
 // Phase 4c: Benchmark Helpers
@@ -115,16 +111,16 @@ struct bitnfa_engine {
 };
 
 // Force standard CTRE engine (for benchmarking)
-template <ctll::fixed_string Pattern>
-struct ctre_engine {
-    static auto match(std::string_view input) {
-        return ctre::match<Pattern>(input);
-    }
-
-    static auto search(std::string_view input) {
-        return ctre::search<Pattern>(input);
-    }
-};
+// NOTE: Disabled due to circular dependency - wrapper.hpp not yet defined
+// template <ctll::fixed_string Pattern>
+// struct ctre_engine {
+// 	static auto match(std::string_view input) {
+// 		return ctre::match<Pattern>(input);
+// 	}
+// 	static auto search(std::string_view input) {
+// 		return ctre::search<Pattern>(input);
+// 	}
+// };
 
 } // namespace bitnfa
 } // namespace ctre

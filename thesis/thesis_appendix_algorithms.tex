@@ -1,0 +1,130 @@
+\section*{Appendix B: Algorithm Overview}
+\label{appendix:algorithms}
+
+This appendix presents simplified pseudocode for the core optimization algorithms described in Section~\ref{sec:simd-implementation}. Implementation details are omitted for clarity.
+
+\subsection*{Execution Model}
+
+The implementation uses a two-stage execution model. This clarifies a common misunderstanding about how complex patterns are processed.
+
+\subsubsection*{Example Pattern: \texttt{[a-z]*test[0-9]+}}
+
+\textbf{Common Misconception:}
+
+Pattern is NOT split into three separate matching operations:
+\begin{verbatim}
+// WRONG INTERPRETATION:
+step1: match [a-z]*
+step2: match "test"
+step3: match [0-9]+
+\end{verbatim}
+
+\textbf{Actual Execution:}
+
+\textbf{Stage 1 - Prefilter (Optional):} If literal \texttt{"test"} was extracted during compile-time analysis:
+\begin{verbatim}
+if "test" not found anywhere in input:
+    return NO_MATCH  // Early rejection without full evaluation
+// Otherwise: continue to Stage 2
+\end{verbatim}
+
+Note: Prefilter is a precondition check only. It does not consume input, verify context, or perform pattern matching. It only determines if the literal exists anywhere in the input string.
+
+\textbf{Stage 2 - Unified Pattern Evaluation:} Template-generated code executes the entire pattern as single atomic operation:
+\begin{verbatim}
+// Unified state machine evaluates complete pattern
+evaluate_pattern<"[a-z]*test[0-9]+">(input):
+    position = 0
+
+    // Match [a-z]* (SIMD-accelerated within evaluation)
+    while input[position] in range('a', 'z'):
+        chunk = load_32_bytes(input, position)
+        if all_in_range(chunk, 'a', 'z'):
+            position += 32  // SIMD: process 32 bytes
+        else:
+            position += count_matching(chunk)
+            break
+
+    // Match "test" (character-by-character within evaluation)
+    if not match_literal(input, position, "test"):
+        return NO_MATCH
+    position += 4
+
+    // Match [0-9]+ (SIMD-accelerated within evaluation)
+    matched_count = 0
+    while input[position] in range('0', '9'):
+        chunk = load_32_bytes(input, position)
+        if all_in_range(chunk, '0', '9'):
+            position += 32  // SIMD: process 32 bytes
+            matched_count += 32
+        else:
+            count = count_matching(chunk)
+            position += count
+            matched_count += count
+            break
+
+    if matched_count < 1:  // + requires at least one match
+        return NO_MATCH
+
+    return MATCH  // Complete pattern satisfied
+\end{verbatim}
+
+\textbf{Key Points:}
+\begin{itemize}
+\item Pattern evaluated as single unified state machine, not decomposed
+\item SIMD acceleration applied selectively within evaluation for character classes
+\item Correct regex semantics maintained (backtracking, quantifiers, captures)
+\item Prefilter and evaluation are distinct: prefilter checks precondition, evaluation verifies pattern
+\end{itemize}
+
+\subsection*{Compile-Time Analysis}
+
+\begin{verbatim}
+// Literal extraction (dominator/region fallback)
+extract_literal(Pattern):
+    nfa = glushkov_nfa(Pattern)
+    dominator = find_dominating_path(nfa)
+    if dominator.length >= 16: return dominator
+    region = find_common_suffix(nfa)
+    return (region.length > dominator.length) ? region : dominator
+
+// Pattern classification
+classify(Pattern):
+    [a-z]         -> SIMD_RANGE
+    [^a-z]        -> SIMD_NEGATED
+    [aeiou]       -> SIMD_SHUFTI
+    [a-zA-Z0-9]   -> SIMD_MULTI_RANGE
+    default       -> SCALAR
+\end{verbatim}
+
+\subsection*{SIMD Techniques}
+
+Applied within unified evaluation, not as separate operations.
+
+\begin{verbatim}
+// Range: [a-z]
+match_range(chunk, min, max):
+    outside = (chunk < min) OR (chunk > max)
+    return all_zero(outside)
+
+// Shufti: [aeiou]
+match_shufti(chunk, char_set):
+    upper = chunk >> 4
+    lower = chunk & 0xF
+    matches = lookup(upper_lut, upper) AND lookup(lower_lut, lower)
+    return all_set(matches)
+
+// Multi-range: [a-zA-Z0-9]
+match_multi(chunk, ranges):
+    result = zero_vector
+    for (min, max) in ranges:
+        result = result OR check_range(chunk, min, max)
+    return all_set(result)
+
+// Negated: [^a-z]
+match_negated(chunk, min, max):
+    inside = (chunk >= min) AND (chunk <= max)
+    return all_zero(inside)
+\end{verbatim}
+
+All process 32 bytes per iteration (AVX2). SIMD activates for inputs over 16 bytes.

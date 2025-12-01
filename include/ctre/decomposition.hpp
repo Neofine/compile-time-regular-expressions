@@ -97,15 +97,35 @@ inline constexpr auto extract_literal_with_expansion_and_fallback() -> dominator
         return result;
     }
 
-    // Step 1: Use NFA-based result if available
-    if constexpr (nfa_result.has_literal) {
+    // Step 1: Use NFA-based result if available AND it's long enough
+    if constexpr (nfa_result.has_literal && nfa_result.length >= 16) {
         dominators::literal_result<64> result = nfa_result;
         result.nfa_dominator_length = nfa_result.length;  // Same as literal length (not from expansion)
         return result;
     }
 
     // Step 2: Fallback to dominant region analysis
-    return region::extract_literal_from_regions(nfa);
+    // This runs if:
+    // - Dominator analysis found no literal, OR
+    // - Dominator found a literal < 16 bytes (too short for effective prefiltering)
+    constexpr auto region_result = region::extract_literal_from_regions(nfa);
+
+    // Step 3: Choose the better result between short dominator literal and region result
+    if constexpr (nfa_result.has_literal && nfa_result.length < 16) {
+        // We have a short dominator literal - compare with region result
+        if constexpr (region_result.has_literal && region_result.length > nfa_result.length) {
+            // Region analysis found a longer literal - use it!
+            return region_result;
+        } else {
+            // Keep the dominator literal (even if short)
+            dominators::literal_result<64> result = nfa_result;
+            result.nfa_dominator_length = nfa_result.length;
+            return result;
+        }
+    }
+
+    // Step 4: Return region result (either dominator found nothing, or region is better)
+    return region_result;
 }
 
 // Extract literal with fallback to region analysis (original version, no expansion)
@@ -116,12 +136,24 @@ inline auto extract_literal_with_fallback() {
 
     // Step 1: Try dominant path analysis (fast, covers 97%+)
     constexpr auto path_result = dominators::extract_literal_from_dominators(nfa);
-    if constexpr (path_result.has_literal) {
-        return path_result;  // Path analysis succeeded!
+    if constexpr (path_result.has_literal && path_result.length >= 16) {
+        return path_result;  // Path analysis succeeded with good literal!
     }
 
-    // Step 2: Fallback to dominant region analysis (covers remaining 2-3%)
-    return region::extract_literal_from_regions(nfa);
+    // Step 2: Fallback to dominant region analysis
+    // Runs if dominator found nothing OR found a literal < 16 bytes
+    constexpr auto region_result = region::extract_literal_from_regions(nfa);
+
+    // Step 3: Choose better result
+    if constexpr (path_result.has_literal && path_result.length < 16) {
+        // Have short dominator literal - compare with region
+        if constexpr (region_result.has_literal && region_result.length > path_result.length) {
+            return region_result;  // Region found longer literal
+        }
+        return path_result;  // Keep dominator literal
+    }
+
+    return region_result;  // Either dominator found nothing, or region is better
 }
 
 // Check if a pattern has an extractable prefilter literal
