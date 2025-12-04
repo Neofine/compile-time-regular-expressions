@@ -142,23 +142,19 @@ struct StateMask128 {
     }
 
     // Fast runtime shift using SIMD (non-constexpr)
-    inline StateMask128 shift_runtime(size_t shift_amount) const {
+    [[nodiscard]] inline StateMask128 shift_runtime(size_t shift_amount) const noexcept {
         if (shift_amount == 0) return *this;
         if (shift_amount >= 128) return StateMask128{};
 
+        const int shift = static_cast<int>(shift_amount);
         if (shift_amount < 64) {
-            // Use SIMD lane shifts + manual carry
-            __m128i shifted = _mm_slli_epi64(bits, shift_amount);
-
-            // Handle carry from low to high lane
+            __m128i shifted = _mm_slli_epi64(bits, shift);
             uint64_t low = _mm_extract_epi64(bits, 0);
             uint64_t carry = low >> (64 - shift_amount);
             uint64_t high = _mm_extract_epi64(shifted, 1);
             shifted = _mm_insert_epi64(shifted, high | carry, 1);
-
             return StateMask128(shifted);
         } else {
-            // Shift >= 64: move low to high
             uint64_t low = _mm_extract_epi64(bits, 0);
             return StateMask128(_mm_insert_epi64(_mm_setzero_si128(), low << (shift_amount - 64), 1));
         }

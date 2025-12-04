@@ -6,6 +6,7 @@
 // Used for extracting required literals for prefiltering
 
 #include "glushkov_nfa.hpp"
+#include "multi_literal.hpp"
 #include <array>
 #include <cstddef>
 
@@ -154,26 +155,9 @@ constexpr auto find_dominators(const NFA& nfa) {
     return result;
 }
 
-// =============================================================================
-// Literal Extraction
-// =============================================================================
-
-// Result structure for extracted literal
+// Literal Extraction - uses ctre::literal_result from multi_literal.hpp
 template <size_t MaxLength = 64>
-struct literal_result {
-    std::array<char, MaxLength> chars{};
-    size_t length = 0;
-    bool has_literal = false;
-    size_t start_position = 0;  // Position in NFA where literal starts
-    size_t nfa_dominator_length = 0;  // Length of NFA-based dominator literal (for expansion validation)
-
-    constexpr void add_char(char c) {
-        if (length < MaxLength) {
-            chars[length++] = c;
-            has_literal = true;
-        }
-    }
-};
+using literal_result = ctre::literal_result<MaxLength>;
 
 // Extract consecutive dominator positions as a literal string
 template <typename NFA>

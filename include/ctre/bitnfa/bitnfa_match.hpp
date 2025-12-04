@@ -66,9 +66,15 @@ __attribute__((always_inline)) inline match_result match(const BitNFA128& nfa, s
 // Match from AST directly (used by smart dispatch in wrapper.hpp)
 template <typename AST>
 inline match_result match_from_ast(std::string_view input) {
-    // Compile AST to NFA and match
     static constexpr auto nfa = compile_with_charclass<AST>();
     return match(nfa, input);
+}
+
+// Search from AST directly (used by smart dispatch in wrapper.hpp)
+template <typename AST>
+inline match_result search_from_ast(std::string_view input) {
+    static constexpr auto nfa = compile_with_charclass<AST>();
+    return search(nfa, input);
 }
 
 // Convenience: compile pattern string and match

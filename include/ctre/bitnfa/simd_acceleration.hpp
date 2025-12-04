@@ -8,42 +8,24 @@
 #include <cstring>
 #include <string_view>
 
-using namespace ctre::simd;
-
-// Hyperscan-style SIMD acceleration for BitNFA
-// Two-layer architecture:
-// 1. Acceleration Layer (SIMD) - Skip to interesting positions
-// 2. NFA Layer (State machine) - Only run when necessary
-
 namespace ctre::bitnfa {
 
-// =============================================================================
-// Layer 1: SIMD Acceleration - Skip Forward Quickly
-// =============================================================================
-
-// Helper: Find next position where a character class STOPS matching
-// Scan forward from 'begin' while characters match, return first non-match
+// Find next position where a character class STOPS matching
 template <typename CharClassType>
-__attribute__((always_inline)) inline const char* simd_find_char_class_end(const char* begin, const char* end) {
-    // Use SIMD to scan matching range for simple character ranges
-    if constexpr (requires { simd_pattern_trait<CharClassType>::min_char;
-                             simd_pattern_trait<CharClassType>::max_char; }) {
-        constexpr char min_char = simd_pattern_trait<CharClassType>::min_char;
-        constexpr char max_char = simd_pattern_trait<CharClassType>::max_char;
-
+[[nodiscard]] inline const char* simd_find_char_class_end(const char* begin, const char* end) noexcept {
+    if constexpr (requires { simd::simd_pattern_trait<CharClassType>::min_char;
+                             simd::simd_pattern_trait<CharClassType>::max_char; }) {
+        constexpr char min_char = simd::simd_pattern_trait<CharClassType>::min_char;
+        constexpr char max_char = simd::simd_pattern_trait<CharClassType>::max_char;
         const char* current = begin;
 
-        if (can_use_simd() && get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-            // Use AVX2 to find first NON-matching character
+        if (simd::can_use_simd() && simd::get_simd_capability() >= simd::SIMD_CAPABILITY_AVX2) {
             const char* scan_end = end - 32;
-
             __m256i min_vec = _mm256_set1_epi8(min_char);
             __m256i max_vec = _mm256_set1_epi8(max_char);
 
             while (current <= scan_end) {
                 __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(current));
-
-                // FIX: Avoid signed char overflow
                 __m256i lt_min = _mm256_cmpgt_epi8(min_vec, data);
                 __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
                 __m256i gt_max = _mm256_cmpgt_epi8(data, max_vec);
@@ -51,65 +33,48 @@ __attribute__((always_inline)) inline const char* simd_find_char_class_end(const
                 __m256i result = _mm256_and_si256(ge_min, le_max);
 
                 int mask = _mm256_movemask_epi8(result);
-                if (static_cast<unsigned int>(mask) != 0xFFFFFFFFU) {
-                    // Found a non-matching character!
-                    int first_nonmatch = __builtin_ctz(~mask);
-                    return current + first_nonmatch;
+                if (static_cast<unsigned>(mask) != 0xFFFFFFFFU) {
+                    return current + __builtin_ctz(~mask);
                 }
                 current += 32;
             }
         }
 
-        // Scalar tail
-        // FIX: Use unsigned char comparison to avoid signed char issues
-        while (current < end && static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
+        while (current < end &&
+               static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
                static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char)) {
             ++current;
         }
         return current;
     } else {
-        // Fallback for non-range character classes
         const char* current = begin;
-        while (current < end && CharClassType::match_char(*current, flags{})) {
-            ++current;
-        }
+        while (current < end && CharClassType::match_char(*current, flags{})) ++current;
         return current;
     }
 }
 
-// Helper: Find next position where a character class matches
-// Returns end() if no match found
+// Find next position where a character class matches
 template <typename CharClassType>
-__attribute__((always_inline)) inline const char* simd_find_char_class(const char* begin, const char* end) {
-    if (!can_use_simd()) {
-        // Scalar fallback
-        for (const char* p = begin; p != end; ++p) {
-            if (CharClassType::match_char(*p, flags{})) {
-                return p;
-            }
-        }
+[[nodiscard]] inline const char* simd_find_char_class(const char* begin, const char* end) noexcept {
+    if (!simd::can_use_simd()) {
+        for (const char* p = begin; p != end; ++p)
+            if (CharClassType::match_char(*p, flags{})) return p;
         return end;
     }
 
-    // SIMD acceleration using CTRE's existing infrastructure
     if constexpr (requires { simd::simd_pattern_trait<CharClassType>::min_char;
                              simd::simd_pattern_trait<CharClassType>::max_char; }) {
-        // Character range like [a-z]
         constexpr char min_char = simd::simd_pattern_trait<CharClassType>::min_char;
         constexpr char max_char = simd::simd_pattern_trait<CharClassType>::max_char;
 
-        if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-            // Use AVX2 for fast scanning
+        if (simd::get_simd_capability() >= simd::SIMD_CAPABILITY_AVX2) {
             const char* current = begin;
             const char* scan_end = end - 32;
-
             __m256i min_vec = _mm256_set1_epi8(min_char);
             __m256i max_vec = _mm256_set1_epi8(max_char);
 
             while (current <= scan_end) {
                 __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(current));
-
-                // FIX: Avoid signed char overflow
                 __m256i lt_min = _mm256_cmpgt_epi8(min_vec, data);
                 __m256i ge_min = _mm256_xor_si256(lt_min, _mm256_set1_epi8(static_cast<char>(0xFF)));
                 __m256i gt_max = _mm256_cmpgt_epi8(data, max_vec);
@@ -117,35 +82,24 @@ __attribute__((always_inline)) inline const char* simd_find_char_class(const cha
                 __m256i result = _mm256_and_si256(ge_min, le_max);
 
                 int mask = _mm256_movemask_epi8(result);
-                if (mask != 0) {
-                    // Found a match!
-                    int first_match = __builtin_ctz(mask);
-                    return current + first_match;
-                }
+                if (mask != 0) return current + __builtin_ctz(mask);
                 current += 32;
             }
 
-            // Scalar tail
-            // FIX: Use unsigned char comparison to avoid signed char issues
             for (; current != end; ++current) {
                 if (static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
-                    static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char)) {
+                    static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char))
                     return current;
-                }
             }
             return end;
-        } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
-            // Use SSE4.2 for scanning
+        } else if (simd::get_simd_capability() >= simd::SIMD_CAPABILITY_SSE42) {
             const char* current = begin;
             const char* scan_end = end - 16;
-
             __m128i min_vec = _mm_set1_epi8(min_char);
             __m128i max_vec = _mm_set1_epi8(max_char);
 
             while (current <= scan_end) {
                 __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(current));
-
-                // FIX: Avoid signed char overflow
                 __m128i lt_min = _mm_cmpgt_epi8(min_vec, data);
                 __m128i ge_min = _mm_xor_si128(lt_min, _mm_set1_epi8(static_cast<char>(0xFF)));
                 __m128i gt_max = _mm_cmpgt_epi8(data, max_vec);
@@ -153,98 +107,69 @@ __attribute__((always_inline)) inline const char* simd_find_char_class(const cha
                 __m128i result = _mm_and_si128(ge_min, le_max);
 
                 int mask = _mm_movemask_epi8(result);
-                if (mask != 0) {
-                    int first_match = __builtin_ctz(mask);
-                    return current + first_match;
-                }
+                if (mask != 0) return current + __builtin_ctz(mask);
                 current += 16;
             }
 
-            // Scalar tail
-            // FIX: Use unsigned char comparison to avoid signed char issues
             for (; current != end; ++current) {
                 if (static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
-                    static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char)) {
+                    static_cast<unsigned char>(*current) <= static_cast<unsigned char>(max_char))
                     return current;
-                }
             }
             return end;
         }
     }
 
-    // Fallback: scalar search
-    for (const char* p = begin; p != end; ++p) {
-        if (CharClassType::match_char(*p, flags{})) {
-            return p;
-        }
-    }
+    for (const char* p = begin; p != end; ++p)
+        if (CharClassType::match_char(*p, flags{})) return p;
     return end;
 }
 
-// Helper: Find next single character
-inline const char* simd_find_char(const char* begin, const char* end, char target) {
-    if (!can_use_simd() || end - begin < 16) {
-        // Scalar for short strings
-        return static_cast<const char*>(memchr(begin, target, end - begin));
+// Find next single character
+[[nodiscard]] inline const char* simd_find_char(const char* begin, const char* end, char target) noexcept {
+    if (!simd::can_use_simd() || end - begin < 16) {
+        const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
+        return r ? r : end;
     }
 
-    if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+    if (simd::get_simd_capability() >= simd::SIMD_CAPABILITY_AVX2) {
         const char* current = begin;
         const char* scan_end = end - 32;
-
         __m256i target_vec = _mm256_set1_epi8(target);
 
         while (current <= scan_end) {
             __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(current));
-            __m256i result = _mm256_cmpeq_epi8(data, target_vec);
-
-            int mask = _mm256_movemask_epi8(result);
-            if (mask != 0) {
-                int first_match = __builtin_ctz(mask);
-                return current + first_match;
-            }
+            int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(data, target_vec));
+            if (mask != 0) return current + __builtin_ctz(mask);
             current += 32;
         }
 
-        // Scalar tail
-        for (; current != end; ++current) {
+        for (; current != end; ++current)
             if (*current == target) return current;
-        }
         return end;
     }
 
-    // Use memchr for SSE4.2 (it's optimized)
-    const char* result = static_cast<const char*>(memchr(begin, target, end - begin));
-    return result ? result : end;
+    const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
+    return r ? r : end;
 }
 
-// =============================================================================
 // Pattern Analysis for Acceleration
-// =============================================================================
+template <typename AST> struct can_accelerate : std::false_type {};
 
-// Detect if a pattern can use SIMD acceleration
-template <typename AST>
-struct can_accelerate : std::false_type {};
-
-// Repeat patterns with character classes: [a-z]+, [0-9]+, etc.
-// AST is repeat<1, 0, set<char_range<'a', 'z'>>>
 template <size_t A, size_t B, typename Content>
 struct can_accelerate<ctre::repeat<A, B, Content>> {
-    // Check if Content has SIMD traits (set<char_range<>> has them)
     static constexpr bool value = requires {
-        { simd_pattern_trait<Content>::min_char } -> std::convertible_to<char>;
-        { simd_pattern_trait<Content>::max_char } -> std::convertible_to<char>;
+        { simd::simd_pattern_trait<Content>::min_char } -> std::convertible_to<char>;
+        { simd::simd_pattern_trait<Content>::max_char } -> std::convertible_to<char>;
     };
 };
 
-// Helper to extract content from repeat
-template <typename T>
-struct extract_repeat_content;
+template <typename T> inline constexpr bool can_accelerate_v = can_accelerate<T>::value;
 
+template <typename T> struct extract_repeat_content;
 template <size_t A, size_t B, typename Content>
-struct extract_repeat_content<ctre::repeat<A, B, Content>> {
-    using type = Content;
-};
+struct extract_repeat_content<ctre::repeat<A, B, Content>> { using type = Content; };
+template <typename T> using extract_repeat_content_t = typename extract_repeat_content<T>::type;
 
 } // namespace ctre::bitnfa
 

@@ -5,34 +5,16 @@
 #include "multi_literal.hpp"
 #include "glushkov_nfa.hpp"
 #include "dominator_analysis.hpp"
+#include "pattern_traits.hpp"
 
-namespace ctre {
-namespace extraction {
+namespace ctre::extraction {
 
-// ============================================================================
-// Strategy: Extract literals with character class expansion
-// ============================================================================
-//
-// The challenge: Glushkov NFA loses type information (only stores char symbol).
-// The solution: Work with AST types during extraction to detect char classes.
-//
-// Approach:
-// 1. Extract dominators from NFA (as before)
-// 2. For each dominator, check if it's a single-char or could be from char class
-// 3. If extraction fails or is short, try AST-based extraction with expansion
-// ============================================================================
+using namespace ctre::traits;
 
-// Helper: Check if a symbol is "generic" (could be from char class)
-// This is heuristic-based since we've lost type information
-constexpr bool could_be_char_class(char symbol) {
-    // If it's a concrete character, it MIGHT be from a char class
-    // We can't know for sure without AST information
+// Check if a symbol could be from a character class (heuristic)
+[[nodiscard]] constexpr bool could_be_char_class(char symbol) noexcept {
     return (symbol != '\0' && symbol != '.' && symbol != '?');
 }
-
-// ============================================================================
-// AST-based extraction with character class expansion
-// ============================================================================
 
 // Forward declarations for recursive traversal
 template <typename T, size_t MaxLiterals, size_t MaxLiteralLen>
@@ -133,19 +115,6 @@ constexpr void extract_from_select(
     current = literal_result<MaxLiteralLen>{};
 }
 
-// Type checkers using template specialization
-template <typename T> struct is_string_type : std::false_type {};
-template <auto... Str> struct is_string_type<string<Str...>> : std::true_type {};
-
-template <typename T> struct is_sequence_type : std::false_type {};
-template <typename... Content> struct is_sequence_type<sequence<Content...>> : std::true_type {};
-
-template <typename T> struct is_select_type : std::false_type {};
-template <typename... Opts> struct is_select_type<select<Opts...>> : std::true_type {};
-
-template <typename T> struct is_character_type : std::false_type {};
-template <auto V> struct is_character_type<character<V>> : std::true_type {};
-
 // Main dispatch
 template <typename T, size_t MaxLiterals, size_t MaxLiteralLen>
 constexpr void extract_literals_from_ast_impl(
@@ -156,19 +125,17 @@ constexpr void extract_literals_from_ast_impl(
     // Prevent infinite recursion
     if (depth++ > 100) return;
 
-    // Dispatch based on type using proper type checking
-    if constexpr (is_string_type<T>::value) {
+    // Dispatch based on type
+    if constexpr (is_string_v<T>)
         extract_from_string(result, current, static_cast<T*>(nullptr));
-    } else if constexpr (is_sequence_type<T>::value) {
+    else if constexpr (is_sequence_v<T>)
         extract_from_sequence(result, current, static_cast<T*>(nullptr), depth);
-    } else if constexpr (is_select_type<T>::value) {
+    else if constexpr (is_select_v<T>)
         extract_from_select(result, current, static_cast<T*>(nullptr), depth);
-    } else if constexpr (is_character_type<T>::value) {
+    else if constexpr (is_character_v<T>)
         extract_from_character(result, current, static_cast<T*>(nullptr));
-    } else if constexpr (is_expandable_char_class<T>()) {
+    else if constexpr (is_expandable_char_class<T>())
         extract_from_char_class<T>(result, current, static_cast<T*>(nullptr));
-    }
-    // Note: We skip repeats, captures, etc. for now (stop extraction)
 }
 
 // Main entry point
@@ -188,7 +155,6 @@ constexpr auto extract_literals_with_expansion() {
     return result;
 }
 
-} // namespace extraction
-} // namespace ctre
+} // namespace ctre::extraction
 
 #endif
