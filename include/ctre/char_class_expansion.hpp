@@ -110,6 +110,18 @@ constexpr size_t count_char_class_size(negative_set<Content...>*) {
     return (inner_count > 0) ? (256 - inner_count) : 256;
 }
 
+// select<character<...>> (alternation like (a|b))
+template <auto... Cs>
+constexpr size_t count_char_class_size(select<character<Cs>...>*) {
+    return sizeof...(Cs);
+}
+
+// capture<Index, select<character<...>>> (captured alternation like (a|b))
+template <size_t Index, auto... Cs>
+constexpr size_t count_char_class_size(capture<Index, select<character<Cs>...>>*) {
+    return sizeof...(Cs);
+}
+
 // Fallback
 template <typename T>
 constexpr size_t count_char_class_size(T*) {

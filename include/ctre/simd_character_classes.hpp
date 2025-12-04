@@ -1,6 +1,7 @@
 #ifndef CTRE__SIMD_CHARACTER_CLASSES__HPP
 #define CTRE__SIMD_CHARACTER_CLASSES__HPP
 
+#include "atoms.hpp"
 #include "atoms_characters.hpp"
 #include "concepts.hpp"
 #include "flags_and_modes.hpp"
@@ -143,6 +144,54 @@ struct simd_pattern_trait<set<Content...>> {
 };
 
 // ============================================================================
+// ALTERNATION TRAITS: select<character<...>> and capture<Index, select<...>>
+// Enable range-based SIMD for (a|b)+ style patterns
+// ============================================================================
+
+// Helper to compute min/max of character pack
+template <auto First, auto... Rest>
+constexpr auto constexpr_min() {
+    if constexpr (sizeof...(Rest) == 0) {
+        return First;
+    } else {
+        auto rest_min = constexpr_min<Rest...>();
+        return First < rest_min ? First : rest_min;
+    }
+}
+
+template <auto First, auto... Rest>
+constexpr auto constexpr_max() {
+    if constexpr (sizeof...(Rest) == 0) {
+        return First;
+    } else {
+        auto rest_max = constexpr_max<Rest...>();
+        return First > rest_max ? First : rest_max;
+    }
+}
+
+// select<character<A>, character<B>, ...> - alternation of characters
+template <auto... Cs>
+struct simd_pattern_trait<select<character<Cs>...>> {
+    static constexpr bool is_simd_optimizable = true;
+    static constexpr size_t min_simd_length = 8;
+    static constexpr auto min_char = constexpr_min<Cs...>();
+    static constexpr auto max_char = constexpr_max<Cs...>();
+    static constexpr bool is_ascii_range = (min_char >= 0 && max_char <= 127);
+    static constexpr bool is_contiguous = ((max_char - min_char + 1) == sizeof...(Cs));
+};
+
+// capture<Index, select<character<...>>> - captured alternation
+template <size_t Index, auto... Cs>
+struct simd_pattern_trait<capture<Index, select<character<Cs>...>>> {
+    static constexpr bool is_simd_optimizable = true;
+    static constexpr size_t min_simd_length = 8;
+    static constexpr auto min_char = constexpr_min<Cs...>();
+    static constexpr auto max_char = constexpr_max<Cs...>();
+    static constexpr bool is_ascii_range = (min_char >= 0 && max_char <= 127);
+    static constexpr bool is_contiguous = ((max_char - min_char + 1) == sizeof...(Cs));
+};
+
+// ============================================================================
 // NEGATED RANGE TRAITS (for [^...] patterns)
 // ============================================================================
 
@@ -183,6 +232,18 @@ struct is_char_range_set_trait<character<C>> : std::true_type {
 // CRITICAL: Add support for negated ranges to enable SIMD!
 template <char A, char B>
 struct is_char_range_set_trait<negative_set<char_range<A, B>>> : std::true_type {
+    using type = std::true_type;
+};
+
+// ALTERNATION: select<character<...>> treated as contiguous range for SIMD
+template <auto... Cs>
+struct is_char_range_set_trait<select<character<Cs>...>> : std::true_type {
+    using type = std::true_type;
+};
+
+// CAPTURED ALTERNATION: capture<Index, select<character<...>>>
+template <size_t Index, auto... Cs>
+struct is_char_range_set_trait<capture<Index, select<character<Cs>...>>> : std::true_type {
     using type = std::true_type;
 };
 
@@ -233,29 +294,26 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
     // Theory: Even small ranges benefit from processing 32 bytes at once
     // But we need to check if we have enough data to make SIMD worth it
 
-    // PERF FIX: Single characters NOW use specialized SIMD dispatch!
-    // We added match_single_char_repeat_avx2() which uses simple cmpeq
-    // This should be faster than range comparison for single chars
+    // PERF FIX: Use compile-time SIMD dispatch to eliminate runtime overhead!
+    // When compiled with -march=native, __AVX2__ or __SSE4_2__ is defined.
+    // This removes the ~10ns overhead from runtime capability checks.
 
-    if (can_use_simd()) {
-        // Check if this pattern has min_char and max_char traits (character ranges)
-        if constexpr (requires {
-                          simd_pattern_trait<PatternType>::min_char;
-                          simd_pattern_trait<PatternType>::max_char;
-                      }) {
-            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+    if constexpr (can_use_simd()) {
+        // Use SIMD only for 32+ byte inputs - scalar is faster for 16B
+        const auto remaining = last - current;
+        if (remaining >= 32) {
+#ifdef __AVX2__
+            // Use AVX2 for 64+ bytes, SSE for 32-63 bytes
+            if (remaining >= 64) {
                 current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
-            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+            } else {
                 current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
             }
-        } else {
-            // Fallback to general character class patterns
-            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-                current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, flags, count);
-            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
-                current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
-            }
+#elif defined(__SSE4_2__) || defined(__SSE2__)
+            current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, flags, count);
+#endif
         }
+        // For < 32 bytes, fall through - scalar in evaluation.hpp handles it
     }
 
     return (count >= MinCount || MinCount == 0) ? current : start;

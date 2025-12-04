@@ -1,6 +1,7 @@
 #ifndef CTRE__SIMD_SHUFTI__HPP
 #define CTRE__SIMD_SHUFTI__HPP
 
+#include "atoms.hpp"
 #include "atoms_characters.hpp"
 #include "flags_and_modes.hpp"
 #include "simd_detection.hpp"
@@ -37,13 +38,13 @@ inline const unsigned char* find_null_terminator_avx2(const unsigned char* p) {
     __m256i zero = _mm256_setzero_si256();
 
     // Handle unaligned start (process up to 32 bytes to reach alignment)
-    const unsigned char* aligned_start = reinterpret_cast<const unsigned char*>(
-        (reinterpret_cast<uintptr_t>(p) + 31) & ~31
-    );
+    const unsigned char* aligned_start =
+        reinterpret_cast<const unsigned char*>((reinterpret_cast<uintptr_t>(p) + 31) & ~31);
 
     // Check bytes before alignment
     for (const unsigned char* scan = p; scan < aligned_start && scan < p + 32; ++scan) {
-        if (*scan == '\0') return scan;
+        if (*scan == '\0')
+            return scan;
     }
 
     // Process aligned 32-byte chunks
@@ -76,11 +77,11 @@ inline const unsigned char* get_end_pointer(Iterator current, EndIterator last) 
         // Sentinel iterator: scan for null terminator with SIMD optimization
         const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(current));
 
-        #ifdef __AVX2__
+#ifdef __AVX2__
         return find_null_terminator_avx2(p);
-        #else
+#else
         return find_null_terminator_scalar(p);
-        #endif
+#endif
     } else {
         // Real iterator: use std::to_address directly (FAST PATH!)
         return reinterpret_cast<const unsigned char*>(std::to_address(last));
@@ -96,7 +97,7 @@ inline const unsigned char* get_end_pointer(Iterator current, EndIterator last) 
 template <auto... Cs>
 constexpr bool is_sparse_character_set() {
     if constexpr (sizeof...(Cs) < 5) {
-        return false;  // Too small for Shufti to benefit
+        return false; // Too small for Shufti to benefit
     }
 
     // Sort characters
@@ -118,7 +119,7 @@ constexpr bool is_sparse_character_set() {
     // Check for contiguous ranges (if >50% are contiguous, it's a range pattern)
     size_t contiguous_count = 0;
     for (size_t i = 1; i < sorted.size(); ++i) {
-        if (sorted[i] == sorted[i-1] + 1) {
+        if (sorted[i] == sorted[i - 1] + 1) {
             contiguous_count++;
         }
     }
@@ -136,7 +137,7 @@ struct shufti_pattern_trait {
     static constexpr bool is_shufti_optimizable = false;
     static constexpr bool should_use_shufti = false;
     static constexpr bool is_sparse = false;  // Important: track if pattern is sparse
-    static constexpr bool is_negated = false;  // Track if pattern is negated
+    static constexpr bool is_negated = false; // Track if pattern is negated
 };
 
 template <typename... Content>
@@ -145,7 +146,7 @@ struct shufti_pattern_trait<set<Content...>> {
     // DISABLE generic trait - only enable for specific discrete character sets
     // Ranges like [a-z], [0-9], [0-9a-f] are better handled by existing SIMD
     static constexpr bool should_use_shufti = false;
-    static constexpr bool is_sparse = false;  // Default to not sparse for generic sets
+    static constexpr bool is_sparse = false; // Default to not sparse for generic sets
     static constexpr bool is_negated = false;
 };
 
@@ -165,8 +166,7 @@ struct shufti_pattern_trait<set<character<Cs>...>> {
     // - Digit patterns (poor nibble diversity): 0.55x-0.72x with Shufti, but still CORRECT
     // - All sparse patterns MUST avoid range-based SIMD (it gives wrong results)
     // Auto-disabled for C-strings (sentinel iterators) to avoid overhead
-    static constexpr bool should_use_shufti =
-        (num_chars >= 5 && num_chars <= 30) && is_sparse;
+    static constexpr bool should_use_shufti = (num_chars >= 5 && num_chars <= 30) && is_sparse;
     static constexpr bool is_negated = false;
 };
 
@@ -177,10 +177,48 @@ struct shufti_pattern_trait<negate<set<character<Cs>...>>> {
     static constexpr size_t num_chars = sizeof...(Cs);
     static constexpr bool is_sparse = is_sparse_character_set<Cs...>();
 
-    // Enable Shufti for negated sparse sets (use andnot instead of and)
-    static constexpr bool should_use_shufti =
-        (num_chars >= 5 && num_chars <= 30) && is_sparse;
-    static constexpr bool is_negated = true;  // Mark as negated
+    // USE Shufti for negated patterns!
+    // Strategy: Use Shufti to find first char IN the set (e.g., first vowel).
+    // Everything BEFORE that position matches [^aeiou]+.
+    // No per-byte verification needed - just find the terminator!
+    static constexpr bool should_use_shufti = is_sparse;
+    static constexpr bool is_negated = true; // Mark as negated
+};
+
+// negative_set is the actual type used for [^aeiou] patterns
+template <auto... Cs>
+struct shufti_pattern_trait<negative_set<character<Cs>...>> {
+    static constexpr bool is_shufti_optimizable = true;
+    static constexpr size_t num_chars = sizeof...(Cs);
+    static constexpr bool is_sparse = is_sparse_character_set<Cs...>();
+    static constexpr bool should_use_shufti = is_sparse;
+    static constexpr bool is_negated = true;
+};
+
+// ============================================================================
+// ALTERNATION OPTIMIZATION: select<character<A>, character<B>, ...>
+// For small alternations (<5 chars), use range-based SIMD via simd_pattern_trait
+// For larger sparse alternations (5-30 chars), use Shufti
+// ============================================================================
+
+template <auto... Cs>
+struct shufti_pattern_trait<select<character<Cs>...>> {
+    static constexpr size_t num_chars = sizeof...(Cs);
+    static constexpr bool is_sparse = true;
+    // Only use Shufti for 5-30 chars, like set<character<...>>
+    static constexpr bool should_use_shufti = (num_chars >= 5 && num_chars <= 30);
+    static constexpr bool is_shufti_optimizable = should_use_shufti;
+    static constexpr bool is_negated = false;
+};
+
+// Handle captured alternations: (a|b)+ -> plus<capture<Index, select<character<...>>>>
+template <size_t Index, auto... Cs>
+struct shufti_pattern_trait<capture<Index, select<character<Cs>...>>> {
+    static constexpr size_t num_chars = sizeof...(Cs);
+    static constexpr bool is_sparse = true;
+    static constexpr bool should_use_shufti = (num_chars >= 5 && num_chars <= 30);
+    static constexpr bool is_shufti_optimizable = should_use_shufti;
+    static constexpr bool is_negated = false;
 };
 
 struct character_class {
@@ -616,7 +654,9 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
         remaining -= 32;
     }
 
-    if (remaining >= 16 && get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
+    // SSE path for 16+ byte tail - compile-time check
+#if defined(__SSSE3__) || defined(__SSE4_2__)
+    if (remaining >= 16) {
         __m128i input = _mm_loadu_si128(reinterpret_cast<const __m128i*>(p));
 
         __m128i upper_nibbles = _mm_srli_epi16(input, 4);
@@ -647,6 +687,7 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
         p += 16;
         remaining -= 16;
     }
+#endif
 
     while (p < end) {
         if (char_class.exact_membership[*p]) {
@@ -786,7 +827,7 @@ inline bool match_char_class_shufti_avx2(Iterator& current, const EndIterator la
         return false;
 
     const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(current));
-    const unsigned char* end = get_end_pointer(current, last);  // ← FIXED: handles sentinels!
+    const unsigned char* end = get_end_pointer(current, last); // ← FIXED: handles sentinels!
     const unsigned char* out;
 
     if (shufti_find_avx2(p, end, char_class, out)) {
@@ -808,7 +849,7 @@ inline bool match_char_class_shufti_ssse3(Iterator& current, const EndIterator l
         return false;
 
     const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(current));
-    const unsigned char* end = get_end_pointer(current, last);  // ← FIXED: handles sentinels!
+    const unsigned char* end = get_end_pointer(current, last); // ← FIXED: handles sentinels!
     const unsigned char* out;
 
     if (shufti_find_ssse3(p, end, char_class, out)) {
@@ -849,15 +890,18 @@ inline bool match_char_class_shufti(Iterator& current, const EndIterator last, c
     // OPTIMIZATION: Skip Shufti for sentinel iterators (use existing SIMD instead)
     // Null-scan overhead negates Shufti benefits even with SIMD optimization
     if constexpr (is_sentinel_iterator<std::remove_cv_t<std::remove_reference_t<EndIterator>>>::value) {
-        return false;  // Fall back to existing SIMD (faster for sentinels!)
+        return false; // Fall back to existing SIMD (faster for sentinels!)
     } else {
         // Non-sentinel fast path: use Shufti with direct pointer access
+        // Compile-time SIMD dispatch for zero runtime overhead
         if constexpr (CTRE_SIMD_ENABLED) {
-            if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
-                return match_char_class_shufti_avx2(current, last, char_class);
-            } else if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
-                return match_char_class_shufti_ssse3(current, last, char_class);
-            }
+#ifdef __AVX2__
+            return match_char_class_shufti_avx2(current, last, char_class);
+#elif defined(__SSSE3__) || defined(__SSE4_2__)
+            return match_char_class_shufti_ssse3(current, last, char_class);
+#else
+            return match_char_class_shufti_scalar(current, last, char_class);
+#endif
         }
         return match_char_class_shufti_scalar(current, last, char_class);
     }
@@ -902,24 +946,23 @@ constexpr character_class init_from_chars() {
     }
 
     // Build tables for each character
-    ((
-        [&]() {
-            constexpr uint8_t b = static_cast<uint8_t>(Chars);
-            constexpr uint8_t upper_nibble = (b >> 4) & 0xF;
-            constexpr uint8_t lower_nibble = b & 0xF;
+    (([&]() {
+         constexpr uint8_t b = static_cast<uint8_t>(Chars);
+         constexpr uint8_t upper_nibble = (b >> 4) & 0xF;
+         constexpr uint8_t lower_nibble = b & 0xF;
 
-            // Set bits in lookup tables
-            c.upper_nibble_table[upper_nibble] |= c.match_bit;
-            c.lower_nibble_table[lower_nibble] |= c.match_bit;
+         // Set bits in lookup tables
+         c.upper_nibble_table[upper_nibble] |= c.match_bit;
+         c.lower_nibble_table[lower_nibble] |= c.match_bit;
 
-            // For second LUT (double-SHUFTI)
-            constexpr uint8_t lower_nibble2 = static_cast<uint8_t>((lower_nibble + 7) % 16);
-            c.upper_nibble_table2[upper_nibble] |= c.match_bit2;
-            c.lower_nibble_table2[lower_nibble2] |= c.match_bit2;
+         // For second LUT (double-SHUFTI)
+         constexpr uint8_t lower_nibble2 = static_cast<uint8_t>((lower_nibble + 7) % 16);
+         c.upper_nibble_table2[upper_nibble] |= c.match_bit2;
+         c.lower_nibble_table2[lower_nibble2] |= c.match_bit2;
 
-            c.exact_membership[b] = 0xFF;
-        }()
-    ), ...);
+         c.exact_membership[b] = 0xFF;
+     }()),
+     ...);
 
     c.calculate_heuristics();
     return c;
@@ -938,6 +981,25 @@ constexpr character_class get_character_class_for_pattern_impl(negate<set<charac
     return init_from_chars<Cs...>();
 }
 
+// Specialization for negative_set<character<C>...> patterns (actual type used)
+template <auto... Cs>
+constexpr character_class get_character_class_for_pattern_impl(negative_set<character<Cs>...>*) {
+    return init_from_chars<Cs...>();
+}
+
+// Specialization for select<character<C>...> (alternations like (a|b|c)+)
+// These can use the same Shufti approach as character sets!
+template <auto... Cs>
+constexpr character_class get_character_class_for_pattern_impl(select<character<Cs>...>*) {
+    return init_from_chars<Cs...>();
+}
+
+// Specialization for captured alternations: (a|b)+ -> capture<Index, select<...>>
+template <size_t Index, auto... Cs>
+constexpr character_class get_character_class_for_pattern_impl(capture<Index, select<character<Cs>...>>*) {
+    return init_from_chars<Cs...>();
+}
+
 // Get character class for a pattern type
 template <typename PatternType>
 constexpr character_class get_character_class_for_pattern() {
@@ -945,7 +1007,7 @@ constexpr character_class get_character_class_for_pattern() {
         return get_character_class_for_pattern_impl(static_cast<PatternType*>(nullptr));
     } else {
         character_class c;
-        c.init_alnum();  // Default fallback
+        c.init_alnum(); // Default fallback
         return c;
     }
 }
@@ -955,14 +1017,14 @@ template <typename PatternType, size_t MinCount, size_t MaxCount, typename Itera
 inline Iterator match_pattern_repeat_shufti(Iterator current, const EndIterator last, const flags& f) {
     // Only proceed if Shufti should be used for this pattern
     if constexpr (!shufti_pattern_trait<PatternType>::should_use_shufti) {
-        return current;  // Signal to use existing SIMD
+        return current; // Signal to use existing SIMD
     }
 
     Iterator start = current;
 
     // OPTIMIZATION: Skip Shufti for sentinel iterators (too much overhead)
     if constexpr (is_sentinel_iterator<std::remove_cv_t<std::remove_reference_t<EndIterator>>>::value) {
-        return start;  // Fall back to existing SIMD
+        return start; // Fall back to existing SIMD
     }
 
     // Get the character class for this pattern at compile time
@@ -976,9 +1038,76 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, const EndIterator 
         size_t count = 0;
         size_t remaining = end_ptr - p;
 
-        // Use AVX2 for bulk scanning
-        #ifdef __AVX2__
-        if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
+        // FAST PATH: For 16-31 byte inputs, use SSE directly (avoid AVX2 setup overhead)
+        // Compile-time SIMD check for zero overhead
+#if defined(__SSE4_2__) || defined(__SSSE3__) || defined(__SSE2__)
+        if (remaining >= 16 && remaining < 32) {
+            const __m128i upper_lut_128 =
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.upper_nibble_table.data()));
+            const __m128i lower_lut_128 =
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.lower_nibble_table.data()));
+            const __m128i nibble_mask_128 = _mm_set1_epi8(0x0F);
+
+            while (remaining >= 16 && (MaxCount == 0 || count + 16 <= MaxCount)) {
+                __m128i input = _mm_loadu_si128(reinterpret_cast<const __m128i*>(p));
+
+                __m128i upper_nibbles = _mm_and_si128(_mm_srli_epi16(input, 4), nibble_mask_128);
+                __m128i lower_nibbles = _mm_and_si128(input, nibble_mask_128);
+
+                __m128i upper_matches = _mm_shuffle_epi8(upper_lut_128, upper_nibbles);
+                __m128i lower_matches = _mm_shuffle_epi8(lower_lut_128, lower_nibbles);
+                __m128i combined = _mm_and_si128(upper_matches, lower_matches);
+
+                int mask = _mm_movemask_epi8(combined);
+
+                if constexpr (shufti_pattern_trait<PatternType>::is_negated) {
+                    // NEGATED PATTERN: [^aeiou]+ - match until first vowel
+                    // mask has 1s where bytes MIGHT be in set (potential terminators)
+                    if (mask == 0) {
+                        // No potential vowels - all 16 bytes match!
+                        count += 16;
+                        p += 16;
+                        remaining -= 16;
+                        continue;
+                    }
+                    // Found potential vowel - find first one and verify
+                    int first_potential = __builtin_ctz(mask);
+                    // All bytes before it definitely match
+                    count += first_potential;
+                    p += first_potential;
+                    remaining -= first_potential;
+                    // Verify the potential match
+                    if (remaining > 0 && char_class.exact_membership[*p]) {
+                        goto done_sse; // Real vowel - stop
+                    }
+                    // False positive - this byte matches, continue
+                    ++count;
+                    ++p;
+                    --remaining;
+                } else {
+                    // POSITIVE PATTERN: [aeiou]+ - match consecutive vowels
+                    if (mask == 0) {
+                        goto done_sse; // No matches
+                    }
+                    // Verify each potential match
+                    for (int i = 0; i < 16 && remaining > 0; ++i) {
+                        if (!char_class.exact_membership[p[i]]) {
+                            p += i;
+                            goto done_sse;
+                        }
+                        ++count;
+                    }
+                    p += 16;
+                    remaining -= 16;
+                }
+            }
+        done_sse:;
+        }
+#endif // SSE path
+
+// Use AVX2 for bulk scanning (32+ bytes)
+#ifdef __AVX2__
+        if (remaining >= 32) {
             const __m256i upper_lut = _mm256_broadcastsi128_si256(
                 _mm_loadu_si128(reinterpret_cast<const __m128i*>(char_class.upper_nibble_table.data())));
             const __m256i lower_lut = _mm256_broadcastsi128_si256(
@@ -998,42 +1127,46 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, const EndIterator 
 
                 int mask = _mm256_movemask_epi8(combined);
 
-                // Handle negation: [^aeiou]+ checks if bytes DON'T match [aeiou]
                 if constexpr (shufti_pattern_trait<PatternType>::is_negated) {
-                    // Negated: we want bytes that are NOT in the set
-                    // mask shows which bytes ARE in the set
-                    // If mask == 0, none match the set, so all 32 bytes match [^aeiou]+
+                    // NEGATED PATTERN: [^aeiou]+ - match until first vowel
                     if (mask == 0) {
-                        // All 32 bytes are NOT in [aeiou], continue matching
-                        p += 32;
+                        // No potential vowels - all 32 bytes match!
                         count += 32;
+                        p += 32;
                         remaining -= 32;
-                    } else {
-                        // Some byte(s) ARE in [aeiou], find the first one and stop
-                        int first_match = __builtin_ctz(mask);
-                        count += first_match;
-                        p += first_match;
-                        goto done_avx2;
+                        continue;
                     }
+                    // Found potential vowel - find first and verify
+                    int first_potential = __builtin_ctz(mask);
+                    count += first_potential;
+                    p += first_potential;
+                    remaining -= first_potential;
+                    if (remaining > 0 && char_class.exact_membership[*p]) {
+                        goto done_avx2; // Real vowel - stop
+                    }
+                    // False positive - continue
+                    ++count;
+                    ++p;
+                    --remaining;
                 } else {
-                    // Normal pattern: all 32 bytes match?
-                    if (static_cast<unsigned int>(mask) == 0xFFFFFFFFU) {
-                        // All 32 bytes ARE in the set, continue matching
-                        p += 32;
-                        count += 32;
-                        remaining -= 32;
-                    } else {
-                        // Some byte(s) are NOT in the set, find first non-match
-                        int first_nonmatch = __builtin_ctz(~mask);
-                        count += first_nonmatch;
-                        p += first_nonmatch;
+                    // POSITIVE PATTERN: [aeiou]+
+                    if (mask == 0) {
                         goto done_avx2;
                     }
+                    for (int i = 0; i < 32 && remaining > 0; ++i) {
+                        if (!char_class.exact_membership[p[i]]) {
+                            p += i;
+                            goto done_avx2;
+                        }
+                        ++count;
+                    }
+                    p += 32;
+                    remaining -= 32;
                 }
             }
-            done_avx2:;
+        done_avx2:;
         }
-        #endif
+#endif
 
         // Process remaining bytes with scalar
         while (remaining > 0 && (MaxCount == 0 || count < MaxCount)) {
@@ -1062,7 +1195,7 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, const EndIterator 
         }
     }
 
-    return start;  // Failed to meet minimum count or not contiguous
+    return start; // Failed to meet minimum count or not contiguous
 }
 
 template <typename Iterator, typename EndIterator>

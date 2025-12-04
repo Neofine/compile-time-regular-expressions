@@ -12,7 +12,9 @@
 #include "simd_multirange.hpp"
 #include "simd_pattern_analysis.hpp"
 #include "simd_repetition.hpp"
+#include "simd_sequence_fusion.hpp"
 #include "simd_shufti.hpp"
+#include "simd_single_char.hpp"
 #include "simd_string_matching.hpp"
 #include "starts_with_anchor.hpp"
 #include "utility.hpp"
@@ -165,6 +167,33 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     ctll::list<Tail...>());
 }
 
+// ============================================================================
+// ALTERNATION OPTIMIZATION: select<character<C1>, character<C2>, ...>
+// Convert recursive select evaluation to simple membership check
+// ============================================================================
+
+// Trait to detect single-character alternations
+template <typename T>
+struct is_char_alternation : std::false_type {};
+
+template <auto... Cs>
+struct is_char_alternation<select<character<Cs>...>> : std::true_type {
+    // Fast membership check - equivalent to set<character<Cs>...>::match_char
+    template <typename CharT>
+    static constexpr CTRE_FORCE_INLINE bool match_char(CharT c, const flags& f) noexcept {
+        return (character<Cs>::match_char(c, f) || ...);
+    }
+};
+
+// Handle captured alternations: (a|b) -> capture<Index, select<character<...>>>
+template <size_t Index, auto... Cs>
+struct is_char_alternation<capture<Index, select<character<Cs>...>>> : std::true_type {
+    template <typename CharT>
+    static constexpr CTRE_FORCE_INLINE bool match_char(CharT c, const flags& f) noexcept {
+        return (character<Cs>::match_char(c, f) || ...);
+    }
+};
+
 // matching select in patterns
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, typename HeadOptions,
           typename... TailOptions, typename... Tail>
@@ -191,6 +220,24 @@ template <typename R, typename BeginIterator, typename Iterator, typename EndIte
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator current, const EndIterator last,
                                        const flags& f, R captures,
                                        ctll::list<sequence<HeadContent, TailContent...>, Tail...>) noexcept {
+
+    // SIMD SEQUENCE FUSION: Generic fast path for bounded sequences
+    // Generates SIMD code automatically for ANY bounded sequence pattern
+    using SequenceType = sequence<HeadContent, TailContent...>;
+
+    if constexpr (simd::can_use_simd() && std::is_pointer_v<Iterator>) {
+        if (!std::is_constant_evaluated()) {
+            // Try generic SIMD fusion (works for IPv4, MAC, UUID, phone, date, etc.)
+            // Pass nullptr as type tag for template dispatch
+            Iterator fusion_result = simd::match_sequence_fused(static_cast<SequenceType*>(nullptr), current, last);
+            if (fusion_result != current) {
+                return evaluate(begin, fusion_result, last, f, captures, ctll::list<Tail...>());
+            }
+            // No match - fall through to normal evaluation
+        }
+    }
+
+    // Normal sequence decomposition
     if constexpr (sizeof...(TailContent) > 0) {
         return evaluate(begin, current, last, f, captures,
                         ctll::list<HeadContent, sequence<TailContent...>, Tail...>());
@@ -407,6 +454,58 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
         return not_matched;
     }
 
+    // FAST PATH: Character alternations like (a|b|c)+
+    // Use scalar only when SIMD is not available or at compile time
+    // At runtime with SIMD, the Shufti path below handles this ~10x faster
+    if constexpr (sizeof...(Content) == 1) {
+        using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
+        if constexpr (is_char_alternation<ContentType>::value) {
+            if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*std::declval<Iterator>())>>, char>) {
+                // Skip scalar path if SIMD is available - let Shufti handle it
+                if constexpr (!simd::can_use_simd()) {
+                    const auto backup_current = current;
+                    size_t count = 0;
+
+                    while (current != last && less_than_or_infinite<B>(count)) {
+                        if (!is_char_alternation<ContentType>::match_char(*current, f)) {
+                            break;
+                        }
+                        ++current;
+                        ++count;
+                    }
+
+                    if (count >= A) {
+                        return evaluate(begin, current, last, consumed_something(f, backup_current != current), captures,
+                                        ctll::list<Tail...>());
+                    }
+                    return not_matched;
+                }
+                // When SIMD available: fall through to SIMD Shufti path below
+            }
+        }
+    }
+
+    // EARLY REJECTION: Check first char BEFORE any SIMD setup (outside SIMD block!)
+    // For non-matching inputs (e.g., [0-9]+ on letters), reject in ~1ns vs ~15ns
+    // This is the PREFILTER stage described in thesis - fast-fail before expensive evaluation
+    if constexpr (sizeof...(Content) == 1) {
+        using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
+        if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; }) {
+            if (current != last) {
+                constexpr char min_c = simd::simd_pattern_trait<ContentType>::min_char;
+                constexpr char max_c = simd::simd_pattern_trait<ContentType>::max_char;
+                unsigned char first = static_cast<unsigned char>(*current);
+                if (first < static_cast<unsigned char>(min_c) || first > static_cast<unsigned char>(max_c)) {
+                    if constexpr (A == 0) {
+                        return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+                    } else {
+                        return not_matched;
+                    }
+                }
+            }
+        }
+    }
+
     // SIMD optimization for possessive repetition patterns at runtime (invisible to user)
     // NOTE: This SIMD decision logic is duplicated in both possessive_repeat and repeat
     // for performance. Extracting to helper causes 70% regression (1.82x → 1.07x) due to
@@ -420,7 +519,8 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                                          char>) {
 
                 // PERF: Special case for 'any' (wildcard .) - ultra-fast advance!
-                if constexpr (std::is_same_v<ContentType, any>) {
+                // FIX: Only use when nothing follows (Tail empty), otherwise .*x patterns fail
+                if constexpr (std::is_same_v<ContentType, any> && sizeof...(Tail) == 0) {
                     size_t count = 0;
                     Iterator start = current;
 
@@ -456,17 +556,44 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
                 // SIMD optimization: Compile-time suitability check
                 // Skip for: 1) Small bounded reps, 2) Sequence patterns (literal after repeat)
+                //           3) Simple single-range patterns (to avoid code bloat overhead)
+                //           4) Sentinel iterators (don't support pointer arithmetic)
                 // This prevents binary bloat on patterns like IPv4: [0-9]+\.[0-9]+\.
                 constexpr bool has_literal_after = simd::has_literal_next<Tail...>();
-                if constexpr (simd::can_use_simd() &&
-                              (B == 0 || B >= simd::SIMD_REPETITION_THRESHOLD) &&
-                              !has_literal_after) {
+
+                // CRITICAL FIX: Only use SIMD with contiguous iterators that support subtraction
+                // C++20: std::contiguous_iterator includes std::string::iterator and pointers
+                constexpr bool can_use_pointer_arithmetic =
+                    std::contiguous_iterator<Iterator> &&
+                    (std::is_pointer_v<EndIterator> || std::contiguous_iterator<EndIterator>);
+
+                if constexpr (simd::can_use_simd() && (B == 0 || B >= simd::SIMD_REPETITION_THRESHOLD) &&
+                              !has_literal_after && can_use_pointer_arithmetic) {
+                    // EARLY REJECTION: Check first char before SIMD setup
+                    // For non-matching inputs, this avoids ~15ns SIMD overhead
+                    if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; }) {
+                        if (current != last) {
+                            constexpr char min_c = simd::simd_pattern_trait<ContentType>::min_char;
+                            constexpr char max_c = simd::simd_pattern_trait<ContentType>::max_char;
+                            char first = *current;
+                            if (first < min_c || first > max_c) {
+                                // First char doesn't match - reject without SIMD
+                                if constexpr (A == 0) {
+                                    return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+                                } else {
+                                    return not_matched;
+                                }
+                            }
+                        }
+                    }
+
                     // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
                     // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
                     const auto remaining_input = last - current;
                     if constexpr (simd::is_multi_range<ContentType>::is_valid) {
                         if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
-                            Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
+                            Iterator multirange_result =
+                                simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
                             if (multirange_result != current) {
                                 return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
                             }
@@ -475,8 +602,9 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
                     // Try Shufti for sparse character sets (like [aeiou])
                     if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
-                            Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
+                        if (remaining_input >= simd::SIMD_SHUFTI_THRESHOLD) {
+                            Iterator shufti_result =
+                                simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
                             if (shufti_result != current) {
                                 return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
                             }
@@ -510,26 +638,46 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
                         // PERF: Skip SIMD for very small inputs (overhead dominates)
                         const auto remaining = last - current;
-                        constexpr bool use_simd = true;
+                        // Check if pattern is contiguous (no gaps)
+                        constexpr bool is_contiguous = [] {
+                            if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_contiguous; }) {
+                                return simd::simd_pattern_trait<ContentType>::is_contiguous;
+                            } else {
+                                return !has_gaps; // Fallback: no gaps means contiguous
+                            }
+                        }();
+                        // PERF: Use SIMD for:
+                        // - Contiguous ranges of any size (efficient >= <= comparison)
+                        // - Large sparse sets (>= 8 chars)
+                        // - Negated patterns
+                        constexpr bool use_simd = is_contiguous || (range_size >= 8) || is_negated;
                         if constexpr ((!has_gaps || is_negated) && use_simd) {
                             if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                                 // FIX: Removed is_ascii_range check - overflow bug is now fixed!
                                 // We can now safely process high-bit characters (0x80-0xFF)
-                                Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+                                Iterator simd_result =
+                                    simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                                 if (simd_result != current) {
                                     return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
                                 }
                             }
                         }
                     } else {
-                        // For patterns without min_char/max_char, use SIMD if input is large enough
-                        const auto remaining = last - current;
-                        if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
-                            Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-                            if (simd_result != current) {
-                                return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+                        // For patterns without min_char/max_char, only use SIMD if explicitly optimizable
+                        // PERF: Prevents code bloat for patterns like [^aeiou]+ that would fallback to scalar
+                        constexpr bool explicitly_optimizable =
+                            simd::simd_pattern_trait<ContentType>::is_simd_optimizable;
+
+                        if constexpr (explicitly_optimizable) {
+                            const auto remaining = last - current;
+                            if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
+                                Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+                                if (simd_result != current) {
+                                    return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+                                }
                             }
                         }
+                        // Else: fall through to scalar implementation below
                     }
                 } // End: if constexpr (B == 0 || B >= threshold)
             }
@@ -619,6 +767,26 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
         return not_matched;
     }
 
+    // EARLY REJECTION for greedy repeat: Check first char BEFORE any SIMD setup
+    // For non-matching inputs (e.g., [0-9]+ on letters), reject in ~1ns vs ~15ns
+    if constexpr (sizeof...(Content) == 1) {
+        using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
+        if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; }) {
+            if (current != last) {
+                constexpr char min_c = simd::simd_pattern_trait<ContentType>::min_char;
+                constexpr char max_c = simd::simd_pattern_trait<ContentType>::max_char;
+                unsigned char first = static_cast<unsigned char>(*current);
+                if (first < static_cast<unsigned char>(min_c) || first > static_cast<unsigned char>(max_c)) {
+                    if constexpr (A == 0) {
+                        return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+                    } else {
+                        return not_matched;
+                    }
+                }
+            }
+        }
+    }
+
     // SIMD optimization for repetition patterns at runtime (invisible to user)
     // NOTE: This SIMD decision logic is duplicated in both possessive_repeat and repeat
     // for performance. Extracting to helper causes 70% regression (1.82x → 1.07x) due to
@@ -632,7 +800,8 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                                          char>) {
 
                 // PERF: Special case for 'any' (wildcard .) - ultra-fast advance!
-                if constexpr (std::is_same_v<ContentType, any>) {
+                // FIX: Only use when nothing follows (Tail empty), otherwise .*x patterns fail
+                if constexpr (std::is_same_v<ContentType, any> && sizeof...(Tail) == 0) {
                     size_t count = 0;
                     Iterator start = current;
 
@@ -667,32 +836,42 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                 }
                 // SIMD optimization: Compile-time suitability check
                 // Skip for: 1) Small bounded reps, 2) Sequence patterns (literal after repeat)
+                //           3) Simple single-range patterns (to avoid code bloat overhead)
+                //           4) Sentinel iterators (don't support pointer arithmetic)
                 // This prevents binary bloat on patterns like IPv4: [0-9]+\.[0-9]+\.
-                constexpr bool has_literal_after = simd::has_literal_next<Tail...>();
-                if constexpr (simd::can_use_simd() &&
-                              (B == 0 || B >= simd::SIMD_REPETITION_THRESHOLD) &&
-                              !has_literal_after) {
+                constexpr bool has_literal_after2 = simd::has_literal_next<Tail...>();
+
+                // CRITICAL FIX: Only use SIMD with contiguous iterators that support subtraction
+                // C++20: std::contiguous_iterator includes std::string::iterator and pointers
+                constexpr bool can_use_pointer_arithmetic2 =
+                    std::contiguous_iterator<Iterator> &&
+                    (std::is_pointer_v<EndIterator> || std::contiguous_iterator<EndIterator>);
+
+                if constexpr (simd::can_use_simd() && (B == 0 || B >= simd::SIMD_REPETITION_THRESHOLD) &&
+                              !has_literal_after2 && can_use_pointer_arithmetic2) {
                     // Try multi-range SIMD first (handles any number of ranges: 2, 3, 4, ... N)
                     // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
                     const auto remaining_input = last - current;
                     if constexpr (simd::is_multi_range<ContentType>::is_valid) {
                         if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
-                            Iterator multirange_result = simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
+                            Iterator multirange_result =
+                                simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
                             if (multirange_result != current) {
                                 return evaluate(begin, multirange_result, last, f, captures, ctll::list<Tail...>());
                             }
-                            }
                         }
+                    }
 
                     // Try Shufti for sparse character sets (like [aeiou])
                     if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
-                            Iterator shufti_result = simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
+                        if (remaining_input >= simd::SIMD_SHUFTI_THRESHOLD) {
+                            Iterator shufti_result =
+                                simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
                             if (shufti_result != current) {
                                 return evaluate(begin, shufti_result, last, f, captures, ctll::list<Tail...>());
                             }
-                            }
                         }
+                    }
 
                     // Check range size - balance SIMD overhead vs scalar simplicity
                     if constexpr (requires {
@@ -707,7 +886,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                         constexpr size_t char_count = count_char_class_size(static_cast<ContentType*>(nullptr));
 
                         // Gap detection: skip SIMD if char_count < range_size (has gaps)
-                    // Note: Multi-range patterns (handled above) won't reach here
+                        // Note: Multi-range patterns (handled above) won't reach here
                         constexpr bool has_gaps = (char_count > 0) && (char_count < range_size);
 
                         // Check if this is a negated range (always use SIMD for negated!)
@@ -717,33 +896,41 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                             } else {
                                 return false;
                             }
-                            }();
+                        }();
 
                         // PERF: Skip SIMD for very small inputs (overhead dominates)
-                    // For inputs <28 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
-                    // 28 bytes = conservative threshold that avoids regressions on complex patterns
+                        // For inputs <28 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
+                        // 28 bytes = conservative threshold that avoids regressions on complex patterns
                         const auto remaining = last - current;
                         constexpr bool use_simd = true;
                         if constexpr ((!has_gaps || is_negated) && use_simd) {
                             if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                                 // FIX: Removed is_ascii_range check - overflow bug is now fixed!
-                            // We can now safely process high-bit characters (0x80-0xFF)
+                                // We can now safely process high-bit characters (0x80-0xFF)
+                                Iterator simd_result =
+                                    simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
+                                if (simd_result != current) {
+                                    return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
+                                }
+                            }
+                        }
+                    } else {
+                        // For patterns without min_char/max_char, only use SIMD if explicitly optimizable
+                        // PERF: Prevents code bloat for patterns like [^aeiou]+ that would fallback to scalar
+                        constexpr bool explicitly_optimizable =
+                            simd::simd_pattern_trait<ContentType>::is_simd_optimizable;
+
+                        if constexpr (explicitly_optimizable) {
+                            const auto remaining = last - current;
+                            if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                                 Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                                 if (simd_result != current) {
                                     return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-                            }
-                            }
-                            }
-                        } else {
-                        // For patterns without min_char/max_char, use SIMD if input is large enough
-                        const auto remaining = last - current;
-                        if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
-                            Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
-                            if (simd_result != current) {
-                                return evaluate(begin, simd_result, last, f, captures, ctll::list<Tail...>());
-                            }
+                                }
                             }
                         }
+                        // Else: fall through to scalar implementation below
+                    }
                 } // End: if constexpr (B == 0 || B >= threshold)
             }
         }

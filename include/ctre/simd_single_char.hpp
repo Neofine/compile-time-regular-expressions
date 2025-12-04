@@ -1,12 +1,13 @@
 #ifndef CTRE__SIMD_SINGLE_CHAR__HPP
 #define CTRE__SIMD_SINGLE_CHAR__HPP
 
-#include <immintrin.h>
-#include <cstddef>
 #include "simd_detection.hpp"
+#include <cstddef>
+#include <immintrin.h>
 
 namespace ctre {
 namespace simd {
+
 
 // Fast path for single-character repetitions (e.g., a+, 9*, [x]+)
 // Much faster than Shufti for single chars
@@ -15,15 +16,15 @@ inline size_t match_single_char_avx2(const char* data, size_t length) {
     const char* p = data;
     size_t remaining = length;
     size_t count = 0;
-    
+
     // AVX2 path: process 32 bytes at a time
     __m256i target = _mm256_set1_epi8(C);
-    
+
     while (remaining >= 32 && (MaxCount == 0 || count + 32 <= MaxCount)) {
         __m256i chunk = _mm256_loadu_si256((__m256i*)p);
         __m256i matches = _mm256_cmpeq_epi8(chunk, target);
         uint32_t mask = _mm256_movemask_epi8(matches);
-        
+
         if (mask == 0xFFFFFFFF) {
             // All 32 bytes match
             p += 32;
@@ -40,7 +41,7 @@ inline size_t match_single_char_avx2(const char* data, size_t length) {
             goto done_avx2;
         }
     }
-    
+
 done_avx2:
     // Scalar fallback for remaining bytes
     while (remaining > 0 && (MaxCount == 0 || count < MaxCount)) {
@@ -52,7 +53,7 @@ done_avx2:
             break;
         }
     }
-    
+
     return count;
 }
 
@@ -62,14 +63,14 @@ inline size_t match_single_char_sse42(const char* data, size_t length) {
     const char* p = data;
     size_t remaining = length;
     size_t count = 0;
-    
+
     __m128i target = _mm_set1_epi8(C);
-    
+
     while (remaining >= 16 && (MaxCount == 0 || count + 16 <= MaxCount)) {
         __m128i chunk = _mm_loadu_si128((__m128i*)p);
         __m128i matches = _mm_cmpeq_epi8(chunk, target);
         uint16_t mask = _mm_movemask_epi8(matches);
-        
+
         if (mask == 0xFFFF) {
             p += 16;
             count += 16;
@@ -83,7 +84,7 @@ inline size_t match_single_char_sse42(const char* data, size_t length) {
             goto done_sse;
         }
     }
-    
+
 done_sse:
     // Scalar fallback
     while (remaining > 0 && (MaxCount == 0 || count < MaxCount)) {
@@ -95,7 +96,7 @@ done_sse:
             break;
         }
     }
-    
+
     return count;
 }
 
@@ -113,18 +114,21 @@ inline size_t match_single_char_scalar(const char* data, size_t length) {
     return count;
 }
 
-// Main dispatcher
+// Main dispatcher - compile-time SIMD selection for zero overhead
 template <char C, size_t MaxCount = 0>
 inline size_t match_single_char_repeat(const char* data, size_t length) {
-    int capability = get_simd_capability();
-    
-    if (capability >= SIMD_CAPABILITY_AVX2) {
-        return match_single_char_avx2<C, MaxCount>(data, length);
-    } else if (capability >= SIMD_CAPABILITY_SSE42) {
+#ifdef __AVX2__
+    // For 16-31 byte inputs, use SSE directly (avoid AVX2 setup overhead)
+    if (length >= 16 && length < 32) {
         return match_single_char_sse42<C, MaxCount>(data, length);
-    } else {
-        return match_single_char_scalar<C, MaxCount>(data, length);
     }
+    // For 32+ bytes, use AVX2
+    return match_single_char_avx2<C, MaxCount>(data, length);
+#elif defined(__SSE4_2__) || defined(__SSE2__)
+    return match_single_char_sse42<C, MaxCount>(data, length);
+#else
+    return match_single_char_scalar<C, MaxCount>(data, length);
+#endif
 }
 
 } // namespace simd
