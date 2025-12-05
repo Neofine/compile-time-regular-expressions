@@ -1,32 +1,32 @@
+# Build artifacts
 *.o
 *.d
-**/*.tmp
-test
-result
+build/
+cmake-build-*/
 
-# Debug and test executables
+# Executables
 debug_*
-test_az_*
-tests/*
-!tests/*.cpp
-!tests/*.hpp
-!tests/CMakeLists.txt
-!tests/benchmark-exec/
-!tests/benchmark-range/
-tests/benchmark-exec/*
-!tests/benchmark-exec/Makefile
-!tests/benchmark-exec/.gitignore
-!tests/benchmark-exec/.tm_properties
-!tests/benchmark-exec/*.cpp
-!tests/benchmark-exec/*.hpp
-!tests/benchmark-exec/*.js
+test_*
+*.out
+
+# Python
 *.pyc
-.conan/test_package/build
+__pycache__/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Test data
 mtent12.txt
 *.zip
-tests/benchmark-range/*
-!tests/benchmark-range/*.cpp
-!tests/benchmark-range/*.hpp
-build
-cmake-build-*/*
-.idea/*
+
+# Temporary
+*.tmp
+*.bak
+*.backup
+
+# Plots build (regeneratable)
+plots/build/

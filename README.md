@@ -1,90 +1,64 @@
-# CTRE-SIMD: SIMD-Accelerated Compile-Time Regular Expressions
+# CTRE-SIMD Implementation
 
-This is a fork of [CTRE](https://github.com/hanickadot/compile-time-regular-expressions) with SIMD acceleration for character class repetitions and pattern-specific optimizations.
+This repository contains the implementation described in the thesis. The code extends [CTRE](https://github.com/hanickadot/compile-time-regular-expressions) with SIMD acceleration.
 
-## Key Modifications
+## Code Location
 
-### SIMD Character Class Matching (`include/ctre/simd_*.hpp`)
-- `simd_character_classes.hpp` - AVX2/SSE4.2 range checking for `[a-z]+`, `[0-9]+`
-- `simd_multirange.hpp` - Multi-range support for `[a-zA-Z0-9]+`
-- `simd_shufti.hpp` - Shufti algorithm for sparse sets like `[aeiou]+`
-- `simd_repetition.hpp` - Single character repetition (`a+`, `b*`)
-- `simd_detection.hpp` - Runtime SIMD capability detection
+### SIMD Character Class Matching (Section 2.3)
 
-### Pattern Analysis (`include/ctre/`)
-- `glushkov_nfa.hpp` - Glushkov NFA construction for pattern analysis
-- `dominator_analysis.hpp` - Extract required literals for prefiltering
-- `region_analysis.hpp` - Common suffix extraction from alternations
-- `decomposition.hpp` - Public API for literal extraction
-- `pattern_traits.hpp` - Consolidated type traits for patterns
+```
+include/ctre/simd_character_classes.hpp  - Core range checking [a-z]+, [0-9]+
+include/ctre/simd_multirange.hpp         - Multi-range [a-zA-Z0-9]+
+include/ctre/simd_shufti.hpp             - Shufti algorithm for sparse sets
+include/ctre/simd_repetition.hpp         - Single char repetition a+, b*
+include/ctre/simd_detection.hpp          - Runtime SIMD detection
+```
 
-### BitNFA Engine (`include/ctre/bitnfa/`)
-- Parallel bit-state NFA for alternation patterns (`a|b|c`)
-- 15-39% faster than standard evaluation for alternations
+### Pattern Analysis & Prefiltering (Section 2.4)
 
-### Modified Core Files
-- `include/ctre/evaluation.hpp` - SIMD dispatch and early rejection
-- `include/ctre/wrapper.hpp` - BitNFA integration for alternations
+```
+include/ctre/glushkov_nfa.hpp            - Glushkov NFA construction
+include/ctre/dominator_analysis.hpp      - Dominator-based literal extraction
+include/ctre/region_analysis.hpp         - Common suffix extraction
+include/ctre/decomposition.hpp           - Prefiltering API
+```
 
-## Quick Benchmark
+### BitNFA Engine (Section 2.5)
+
+```
+include/ctre/bitnfa/                     - Parallel bit-state NFA (12 files)
+include/ctre/bitnfa/bitnfa_match.hpp     - Main matching logic
+include/ctre/bitnfa/state_mask.hpp       - SIMD state representation
+```
+
+### Integration Points
+
+```
+include/ctre/evaluation.hpp              - SIMD dispatch (line ~180)
+include/ctre/wrapper.hpp                 - BitNFA integration (line ~80)
+```
+
+## Running Benchmarks
 
 ```bash
+# Quick benchmark (2 min, 31 patterns)
 ./run_individual_benchmarks.sh
+
+# Full benchmark suite
+cd plots
+./scripts/build.sh
+./scripts/run_benchmarks.sh
+python3 generate.py   # generates plots/output/
 ```
 
-This compiles 81 patterns with and without SIMD (`-DCTRE_DISABLE_SIMD`) and reports speedups.
-
-**Typical results:**
-- Character class repetitions: **4-24x speedup**
-- Single char repetitions: **5-16x speedup**
-- Alternations (BitNFA): **1.1-1.3x speedup**
-
-## Full Benchmarks
+## Tests
 
 ```bash
-cd plots
-
-# Build benchmark binary
-./scripts/build.sh
-
-# Run all benchmarks (generates CSV files)
-./scripts/run_benchmarks.sh
-
-# Generate plots
-python3 generate.py
+# Compile a test
+g++ -std=c++20 -I include tests/test_glushkov.cpp -o test && ./test
 ```
 
-**Output:**
-- `plots/output/` - CSV benchmark data
-- `plots/output/figures/` - PNG visualizations
-
-## Project Structure
-
-```
-include/ctre/
-├── simd_*.hpp          # SIMD implementations
-├── bitnfa/             # BitNFA engine
-├── glushkov_nfa.hpp    # NFA construction
-├── decomposition.hpp   # Literal extraction API
-└── pattern_traits.hpp  # Type traits
-
-plots/
-├── benchmarks/         # Benchmark source (thesis_benchmark.cpp)
-├── plotting/           # Python plotting code
-├── scripts/            # Build/run scripts
-└── output/             # Generated results
-
-thesis/                 # LaTeX documentation
-results/individual/     # Quick benchmark results
-```
-
-## Requirements
-
-- C++20 compiler (GCC 10+, Clang 12+)
-- x86-64 with AVX2 (falls back to SSE4.2 or scalar)
-- Python 3.8+ with matplotlib, pandas, seaborn (for plots)
-
-## License
-
-Same as original CTRE - see LICENSE file.
-
+Key test files:
+- `tests/test_glushkov.cpp` - NFA construction
+- `tests/test_dominators.cpp` - Literal extraction
+- `tests/test_region_analysis.cpp` - Suffix extraction
