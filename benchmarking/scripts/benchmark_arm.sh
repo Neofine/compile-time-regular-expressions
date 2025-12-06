@@ -25,24 +25,25 @@ echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$SIMD_CSV"
 echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$BASE_CSV"
 
 # Matching patterns - character class repetitions
+# Format: name@pattern@input_chars
 MATCH_PATTERNS=(
-    "digits|[0-9]+|0123456789"
-    "lowercase|[a-z]+|abcdefghijklmnopqrstuvwxyz"
-    "uppercase|[A-Z]+|ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "alphanumeric|[a-zA-Z0-9]+|abcABC123"
-    "vowels|[aeiou]+|aeiou"
-    "hex|[0-9a-fA-F]+|0123456789abcdef"
+    "digits@[0-9]+@0123456789"
+    "lowercase@[a-z]+@abcdefghijklmnopqrstuvwxyz"
+    "uppercase@[A-Z]+@ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "alphanumeric@[a-zA-Z0-9]+@abcABC123"
+    "vowels@[aeiou]+@aeiou"
+    "hex@[0-9a-fA-F]+@0123456789abcdef"
 )
 
 # Non-matching patterns - test early rejection and prefiltering
 NOMATCH_PATTERNS=(
     # First-char rejection
-    "nomatch_digits|[0-9]+|abcdefghijklmnopqrstuvwxyz"
-    "nomatch_alpha|[a-zA-Z]+|0123456789"
+    "nomatch_digits@[0-9]+@abcdefghijklmnopqrstuvwxyz"
+    "nomatch_alpha@[a-zA-Z]+@0123456789"
     # Region analysis prefilter - input lacks 'est'
-    "region_reject|[a-z]*(test|fest|best)|abcdfghijklmnopqruvwxyz"
+    "region_reject@[a-z]*(test|fest|best)@abcdfghijklmnopqruvwxyz"
     # Dominator analysis prefilter - input lacks 'test'  
-    "dom_reject|[a-z]*test[a-z]*|abcdfghijklmnopqruvwxyz"
+    "dom_reject@[a-z]*test[a-z]*@abcdfghijklmnopqruvwxyz"
 )
 
 # Sizes from 2^2 to 2^15
@@ -138,7 +139,7 @@ EOF
 # Run matching patterns
 echo "=== Matching Patterns ==="
 for p in "${MATCH_PATTERNS[@]}"; do
-    IFS='|' read -r name pattern chars <<< "$p"
+    IFS='@' read -r name pattern chars <<< "$p"
     run_benchmark "arm" "$name" "$pattern" "$chars"
 done
 
@@ -146,7 +147,7 @@ done
 echo ""
 echo "=== Non-Matching Patterns ==="
 for p in "${NOMATCH_PATTERNS[@]}"; do
-    IFS='|' read -r name pattern chars <<< "$p"
+    IFS='@' read -r name pattern chars <<< "$p"
     run_benchmark "arm_nomatch" "$name" "$pattern" "$chars"
 done
 
