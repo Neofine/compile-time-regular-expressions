@@ -105,9 +105,15 @@ CATEGORIES = {
     },
     'arm': {
         'prefix': 'arm/',
-        'title': 'ARM Validation',
+        'title': 'ARM Matching Patterns',
         'heatmap_size': 256,
-        'skip_heatmap': True,  # Single engine comparison - use bar chart instead
+        'skip_heatmap': True,
+    },
+    'arm_nomatch': {
+        'prefix': 'arm_nomatch/',
+        'title': 'ARM Non-Matching (Early Rejection)',
+        'heatmap_size': 256,
+        'skip_heatmap': True,
     },
 }
 

@@ -24,13 +24,25 @@ BASE_CSV="$OUTPUT_DIR/baseline.csv"
 echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$SIMD_CSV"
 echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$BASE_CSV"
 
-PATTERNS=(
+# Matching patterns - character class repetitions
+MATCH_PATTERNS=(
     "digits|[0-9]+|0123456789"
     "lowercase|[a-z]+|abcdefghijklmnopqrstuvwxyz"
     "uppercase|[A-Z]+|ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "alphanumeric|[a-zA-Z0-9]+|abcABC123"
     "vowels|[aeiou]+|aeiou"
     "hex|[0-9a-fA-F]+|0123456789abcdef"
+)
+
+# Non-matching patterns - test early rejection and prefiltering
+NOMATCH_PATTERNS=(
+    # First-char rejection
+    "nomatch_digits|[0-9]+|abcdefghijklmnopqrstuvwxyz"
+    "nomatch_alpha|[a-zA-Z]+|0123456789"
+    # Region analysis prefilter - input lacks 'est'
+    "region_reject|[a-z]*(test|fest|best)|abcdfghijklmnopqruvwxyz"
+    # Dominator analysis prefilter - input lacks 'test'  
+    "dom_reject|[a-z]*test[a-z]*|abcdfghijklmnopqruvwxyz"
 )
 
 # Sizes from 2^2 to 2^15
@@ -54,8 +66,11 @@ fi
 echo "Compilation OK"
 echo ""
 
-for p in "${PATTERNS[@]}"; do
-    IFS='|' read -r name pattern chars <<< "$p"
+run_benchmark() {
+    local prefix=$1
+    local name=$2
+    local pattern=$3
+    local chars=$4
     
     for size in "${SIZES[@]}"; do
         cat > /tmp/arm_bench.cpp << EOF
@@ -89,12 +104,12 @@ int main() {
 }
 EOF
         
-        # SIMD version (default build - on ARM falls back to scalar)
+        # SIMD version
         if $CXX -std=c++20 -O3 -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_simd 2>/tmp/arm_err; then
             if result=$(/tmp/arm_simd 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
                 match=$(echo "$result" | cut -d',' -f2)
-                echo "arm/$name,CTRE-SIMD,$size,$time_ns,$match" >> "$SIMD_CSV"
+                echo "${prefix}/${name},CTRE-SIMD,$size,$time_ns,$match" >> "$SIMD_CSV"
             fi
         else
             echo ""
@@ -102,12 +117,12 @@ EOF
             cat /tmp/arm_err | head -20
         fi
         
-        # Baseline version (explicitly disabled SIMD)
+        # Baseline version
         if $CXX -std=c++20 -O3 -DCTRE_DISABLE_SIMD -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_base 2>/tmp/arm_err; then
             if result=$(/tmp/arm_base 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
                 match=$(echo "$result" | cut -d',' -f2)
-                echo "arm/$name,CTRE,$size,$time_ns,$match" >> "$BASE_CSV"
+                echo "${prefix}/${name},CTRE,$size,$time_ns,$match" >> "$BASE_CSV"
             fi
         else
             echo ""
@@ -118,6 +133,21 @@ EOF
         echo -n "."
     done
     echo " $name done"
+}
+
+# Run matching patterns
+echo "=== Matching Patterns ==="
+for p in "${MATCH_PATTERNS[@]}"; do
+    IFS='|' read -r name pattern chars <<< "$p"
+    run_benchmark "arm" "$name" "$pattern" "$chars"
+done
+
+# Run non-matching patterns  
+echo ""
+echo "=== Non-Matching Patterns ==="
+for p in "${NOMATCH_PATTERNS[@]}"; do
+    IFS='|' read -r name pattern chars <<< "$p"
+    run_benchmark "arm_nomatch" "$name" "$pattern" "$chars"
 done
 
 echo ""
