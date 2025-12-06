@@ -1,12 +1,13 @@
 #!/bin/bash
 # ARM benchmark - outputs CSV compatible with generate.py
+# Tests CTRE-Scalar (optimized loops) vs CTRE (original recursive templates)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OUTPUT_DIR="$SCRIPT_DIR/../output/arm"
 
-echo "ARM Benchmark - CTRE SIMD vs Baseline"
+echo "ARM Benchmark - CTRE-Scalar vs CTRE (original)"
 echo "Platform: $(uname -m)"
 
 # Use clang++ on Mac, g++ otherwise
@@ -18,11 +19,11 @@ fi
 echo "Compiler: $CXX"
 
 mkdir -p "$OUTPUT_DIR"
-SIMD_CSV="$OUTPUT_DIR/simd.csv"
-BASE_CSV="$OUTPUT_DIR/baseline.csv"
+SCALAR_CSV="$OUTPUT_DIR/scalar.csv"
+ORIG_CSV="$OUTPUT_DIR/original.csv"
 
-echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$SIMD_CSV"
-echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$BASE_CSV"
+echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$SCALAR_CSV"
+echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$ORIG_CSV"
 
 # Matching patterns - character class repetitions
 # Format: name@pattern@input_chars
@@ -81,53 +82,57 @@ run_benchmark() {
 #include <cstring>
 #include <ctre.hpp>
 
+// Single input, repeated - realistic usage pattern
+// This avoids artificial branch misprediction from diverse inputs
 int main() {
     std::string input;
     const char* chars = "$chars";
     size_t len = strlen(chars);
     for (size_t i = 0; i < $size; ++i) input += chars[i % len];
     
+    auto result = ctre::match<"$pattern">(input);
+    int matched = result ? 1 : 0;
+    
+    // Warmup
     for (int i = 0; i < 1000; ++i) volatile bool r = ctre::match<"$pattern">(input);
     
-    double best = 1e9;
-    int matches = 0;
-    for (int s = 0; s < 5; ++s) {
-        auto t0 = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < 10000; ++i) {
-            if (ctre::match<"$pattern">(input)) matches++;
-        }
-        auto t1 = std::chrono::high_resolution_clock::now();
-        double ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / 10000;
-        if (ns < best) best = ns;
+    // Benchmark: single input repeated (realistic branch prediction)
+    const int ITERS = 10000;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < ITERS; ++i) {
+        volatile auto r = ctre::match<"$pattern">(input);
     }
-    std::cout << best << "," << (matches > 0 ? 1 : 0) << std::endl;
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / ITERS;
+    
+    std::cout << ns << "," << matched << std::endl;
     return 0;
 }
 EOF
         
-        # SIMD version
-        if $CXX -std=c++20 -O3 -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_simd 2>/tmp/arm_err; then
-            if result=$(/tmp/arm_simd 2>&1); then
+        # Scalar version (optimized loops, no SIMD instructions on ARM)
+        if $CXX -std=c++20 -O3 -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_scalar 2>/tmp/arm_err; then
+            if result=$(/tmp/arm_scalar 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
                 match=$(echo "$result" | cut -d',' -f2)
-                echo "${prefix}/${name},CTRE-SIMD,$size,$time_ns,$match" >> "$SIMD_CSV"
+                echo "${prefix}/${name},CTRE-Scalar,$size,$time_ns,$match" >> "$SCALAR_CSV"
             fi
         else
             echo ""
-            echo "Compile error for $name size=$size (SIMD):"
+            echo "Compile error for $name size=$size (scalar):"
             cat /tmp/arm_err | head -20
         fi
         
-        # Baseline version
-        if $CXX -std=c++20 -O3 -DCTRE_DISABLE_SIMD -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_base 2>/tmp/arm_err; then
-            if result=$(/tmp/arm_base 2>&1); then
+        # Original CTRE (recursive templates)
+        if $CXX -std=c++20 -O3 -DCTRE_DISABLE_SIMD -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_orig 2>/tmp/arm_err; then
+            if result=$(/tmp/arm_orig 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
                 match=$(echo "$result" | cut -d',' -f2)
-                echo "${prefix}/${name},CTRE,$size,$time_ns,$match" >> "$BASE_CSV"
+                echo "${prefix}/${name},CTRE,$size,$time_ns,$match" >> "$ORIG_CSV"
             fi
         else
             echo ""
-            echo "Compile error for $name size=$size (baseline):"
+            echo "Compile error for $name size=$size (original):"
             head -3 /tmp/arm_err
         fi
         
@@ -153,9 +158,9 @@ done
 
 echo ""
 echo "Done! CSV files:"
-wc -l "$SIMD_CSV" "$BASE_CSV"
+wc -l "$SCALAR_CSV" "$ORIG_CSV"
 echo ""
-head -5 "$SIMD_CSV"
+head -5 "$SCALAR_CSV"
 echo "..."
 echo ""
 echo "Now run: cd $SCRIPT_DIR/.. && python3 generate.py"

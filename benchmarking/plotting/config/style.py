@@ -26,12 +26,13 @@ FIGURE_SIZES = {
 
 # Primary engine colors - colorblind-friendly
 ENGINE_COLORS = {
-    'CTRE-SIMD':  '#2166ac',  # Strong blue - our main result
-    'CTRE':       '#92c5de',  # Light blue - baseline
-    'Hyperscan':  '#f4a582',  # Orange
-    'RE2':        '#d6604d',  # Red-orange
-    'PCRE2':      '#8073ac',  # Purple
-    'std::regex': '#666666',  # Gray
+    'CTRE':          '#d1e5f0',  # Light blue - original CTRE (baseline)
+    'CTRE-SIMD':     '#2166ac',  # Strong blue - our SIMD version
+    'CTRE-Scalar':   '#67a9cf',  # Medium blue - our scalar fallback
+    'Hyperscan':     '#f4a582',  # Orange
+    'RE2':           '#d6604d',  # Red-orange
+    'PCRE2':         '#8073ac',  # Purple
+    'std::regex':    '#666666',  # Gray
 }
 
 # Category colors for grouping
@@ -81,8 +82,8 @@ ACCENT = {
 # ENGINE STYLING
 # ============================================================================
 
-ENGINE_ORDER = ['CTRE-SIMD', 'CTRE', 'Hyperscan', 'RE2', 'PCRE2', 'std::regex']
-ENGINE_ORDER_HEATMAP = ['std::regex', 'RE2', 'PCRE2', 'Hyperscan', 'CTRE-SIMD']
+ENGINE_ORDER = ['CTRE-SIMD', 'CTRE-Scalar', 'CTRE', 'Hyperscan', 'RE2', 'PCRE2', 'std::regex']
+ENGINE_ORDER_HEATMAP = ['std::regex', 'RE2', 'PCRE2', 'Hyperscan', 'CTRE', 'CTRE-Scalar', 'CTRE-SIMD']
 
 ENGINE_STYLES = {
     engine: {
@@ -97,8 +98,9 @@ ENGINE_STYLES = {
 }
 
 ENGINE_LABELS = {
+    'CTRE': 'CTRE',
     'CTRE-SIMD': 'CTRE-SIMD',
-    'CTRE': 'CTRE (baseline)',
+    'CTRE-Scalar': 'CTRE-Scalar',
     'RE2': 'RE2',
     'PCRE2': 'PCRE2',
     'Hyperscan': 'Hyperscan',

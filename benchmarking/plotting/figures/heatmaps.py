@@ -167,7 +167,7 @@ class WorstCaseHeatmap(BaseFigure):
         self,
         title: str = None,
         simd_engine: str = 'CTRE-SIMD',
-        baseline_engine: str = 'CTRE',
+        baseline_engine: str = 'CTRE-Original',
     ):
         super().__init__(figsize=FIGURE_SIZES['heatmap_small'], title=title)
         self.simd_engine = simd_engine

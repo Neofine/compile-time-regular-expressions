@@ -26,7 +26,8 @@ mkdir -p "$OUTPUT_DIR"/{simple,complex,scaling,realworld}
 run_cat() {
     echo "Running $1..."
     "$BUILD_DIR/bench_simd" "$1" > "$OUTPUT_DIR/$1/simd.csv" 2>/dev/null
-    "$BUILD_DIR/bench_baseline" "$1" > "$OUTPUT_DIR/$1/baseline.csv" 2>/dev/null
+    "$BUILD_DIR/bench_scalar" "$1" > "$OUTPUT_DIR/$1/scalar.csv" 2>/dev/null
+    "$BUILD_DIR/bench_original" "$1" > "$OUTPUT_DIR/$1/original.csv" 2>/dev/null
 }
 
 case "$CATEGORY" in

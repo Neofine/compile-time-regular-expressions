@@ -97,32 +97,33 @@ def load_csv(path: Path) -> Optional[pd.DataFrame]:
         logger.error(f"Error loading {path}: {e}")
         return None
 
-def merge_simd_baseline(simd_path: Path, baseline_path: Path) -> Optional[pd.DataFrame]:
-    """Merge SIMD and baseline CSV files."""
+def merge_benchmark_csvs(*csv_paths: Path) -> Optional[pd.DataFrame]:
+    """Merge multiple benchmark CSV files."""
     dfs = []
 
-    simd_df = load_csv(simd_path)
-    if simd_df is not None:
-        dfs.append(simd_df)
-        logger.info(f"Loaded SIMD data: {len(simd_df)} rows")
-
-    baseline_df = load_csv(baseline_path)
-    if baseline_df is not None:
-        dfs.append(baseline_df)
-        logger.info(f"Loaded baseline data: {len(baseline_df)} rows")
+    for path in csv_paths:
+        if path.exists():
+            df = load_csv(path)
+            if df is not None:
+                dfs.append(df)
+                logger.info(f"Loaded {path.name}: {len(df)} rows")
 
     if not dfs:
         return None
 
     merged = pd.concat(dfs, ignore_index=True)
 
-    # Remove exact duplicates, keeping first (prefer SIMD data)
+    # Remove exact duplicates, keeping first
     merged = merged.drop_duplicates(
         subset=['Pattern', 'Engine', 'Input_Size'],
         keep='first'
     )
 
     return merged
+
+def merge_simd_baseline(simd_path: Path, baseline_path: Path) -> Optional[pd.DataFrame]:
+    """Merge SIMD and baseline CSV files (legacy compatibility)."""
+    return merge_benchmark_csvs(simd_path, baseline_path)
 
 def load_benchmark_results(
     base_dir: Path,
@@ -169,17 +170,22 @@ def load_benchmark_results(
                     source_files=[results_path]
                 )
 
-        # Try separate files
-        simd_path = cat_dir / simd_file
-        baseline_path = cat_dir / baseline_file
-        df = merge_simd_baseline(simd_path, baseline_path)
-        if df is not None:
-            source_files = [p for p in [simd_path, baseline_path] if p.exists()]
-            return BenchmarkData(
-                df=df,
-                category=category,
-                source_files=source_files
-            )
+        # Try all CTRE variant files (simd, scalar, original)
+        csv_files = [
+            cat_dir / simd_file,
+            cat_dir / 'scalar.csv',
+            cat_dir / 'original.csv',
+            cat_dir / baseline_file,
+        ]
+        existing_files = [f for f in csv_files if f.exists()]
+        if existing_files:
+            df = merge_benchmark_csvs(*existing_files)
+            if df is not None:
+                return BenchmarkData(
+                    df=df,
+                    category=category,
+                    source_files=existing_files
+                )
 
     # Fall back to results.csv in base_dir
     results_path = base_dir / 'results.csv'

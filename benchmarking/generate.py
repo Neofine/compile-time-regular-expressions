@@ -156,20 +156,21 @@ def generate_bar_chart(data, output_dir, config, size=1024):
     plot.save(output_dir / 'bar_comparison.png')
 
 def generate_speedup_bars(data, output_dir, config, size=1024):
-    """Generate speedup bar chart (for ARM - single engine comparison)."""
+    """Generate speedup bar chart (for ARM - CTRE-Scalar vs CTRE comparison)."""
     import numpy as np
 
     prefix = config['prefix']
     patterns = [p for p in data.patterns if p.startswith(prefix)]
     labels = [get_pattern_label(p.split('/')[-1]) for p in patterns]
 
-    # Calculate speedups
+    # Calculate speedups (CTRE-Scalar vs original CTRE)
     speedups = []
     for pattern in patterns:
-        simd_time = data.get_time(pattern, 'CTRE-SIMD', size)
+        # Try CTRE-Scalar first, fall back to CTRE-SIMD for backwards compat
+        scalar_time = data.get_time(pattern, 'CTRE-Scalar', size) or data.get_time(pattern, 'CTRE-SIMD', size)
         base_time = data.get_time(pattern, 'CTRE', size)
-        if simd_time and base_time and simd_time > 0:
-            speedups.append(base_time / simd_time)
+        if scalar_time and base_time and scalar_time > 0:
+            speedups.append(base_time / scalar_time)
         else:
             speedups.append(1.0)
 
@@ -187,7 +188,7 @@ def generate_speedup_bars(data, output_dir, config, size=1024):
     # Labels
     ax.set_xlabel('Pattern', fontsize=11)
     ax.set_ylabel('Speedup (baseline / SIMD)', fontsize=11)
-    ax.set_title(f"{config['title']} — CTRE-SIMD Speedup ({format_size(size)})", fontsize=12, fontweight='bold')
+    ax.set_title(f"{config['title']} — CTRE-Scalar Speedup ({format_size(size)})", fontsize=12, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=9)
 
