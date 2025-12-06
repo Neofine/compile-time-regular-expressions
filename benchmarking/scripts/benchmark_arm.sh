@@ -33,7 +33,8 @@ PATTERNS=(
     "hex|[0-9a-fA-F]+|0123456789abcdef"
 )
 
-SIZES=(32 64 128 256 512)
+# Sizes from 2^2 to 2^15
+SIZES=(4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768)
 
 # Test compile first
 echo "Testing compilation..."
@@ -88,20 +89,20 @@ int main() {
 }
 EOF
         
-        # SIMD version
+        # SIMD version (default build - on ARM falls back to scalar)
         if $CXX -std=c++20 -O3 -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_simd 2>/tmp/arm_err; then
             if result=$(/tmp/arm_simd 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
                 match=$(echo "$result" | cut -d',' -f2)
-                echo "arm/$name,CTRE,$size,$time_ns,$match" >> "$SIMD_CSV"
+                echo "arm/$name,CTRE-SIMD,$size,$time_ns,$match" >> "$SIMD_CSV"
             fi
         else
             echo ""
-            echo "Compile error for $name (SIMD):"
-            cat /tmp/arm_err
+            echo "Compile error for $name size=$size (SIMD):"
+            head -3 /tmp/arm_err
         fi
         
-        # Baseline version
+        # Baseline version (explicitly disabled SIMD)
         if $CXX -std=c++20 -O3 -DCTRE_DISABLE_SIMD -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_base 2>/tmp/arm_err; then
             if result=$(/tmp/arm_base 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
@@ -110,8 +111,8 @@ EOF
             fi
         else
             echo ""
-            echo "Compile error for $name (baseline):"
-            cat /tmp/arm_err
+            echo "Compile error for $name size=$size (baseline):"
+            head -3 /tmp/arm_err
         fi
         
         echo -n "."
@@ -122,5 +123,8 @@ done
 echo ""
 echo "Done! CSV files:"
 wc -l "$SIMD_CSV" "$BASE_CSV"
+echo ""
+head -5 "$SIMD_CSV"
+echo "..."
 echo ""
 echo "Now run: cd $SCRIPT_DIR/.. && python3 generate.py"
