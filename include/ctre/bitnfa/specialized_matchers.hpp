@@ -11,9 +11,7 @@ namespace ctre::bitnfa {
 
 // match_result is defined in bitnfa_match.hpp which includes this file
 
-// =============================================================================
 // String Literal Matching (e.g., "abc")
-// =============================================================================
 
 template <auto... Chars>
 struct string_matcher {
@@ -60,9 +58,7 @@ inline Result fast_search(std::string_view input, ctre::string<Chars...>*, Resul
     return string_matcher<Chars...>::template search<Result>(input);
 }
 
-// =============================================================================
 // Single Character Matching (e.g., 'a')
-// =============================================================================
 
 template <auto C>
 struct char_matcher {
@@ -93,9 +89,7 @@ inline Result fast_search(std::string_view input, ctre::character<C>*, Result*) 
     return char_matcher<C>::template search<Result>(input);
 }
 
-// =============================================================================
 // Simple Sequence Matching (e.g., sequence of characters)
-// =============================================================================
 
 // Match sequence of simple characters
 template <typename... Content>

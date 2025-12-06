@@ -28,5 +28,11 @@ mtent12.txt
 *.bak
 *.backup
 
-# Plots build (regeneratable)
+# Generated output (regeneratable)
 plots/build/
+plots/output/
+results/
+
+# Benchmark binaries
+bench_simd
+bench_baseline

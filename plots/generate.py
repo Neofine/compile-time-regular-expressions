@@ -152,6 +152,10 @@ def generate_simd_delta_bars(data, output_dir, categories):
     """
     import numpy as np
 
+    if data is None:
+        logger.warning("No data for SIMD delta bars")
+        return
+
     df = data  # data is already a DataFrame
 
     # Filter patterns from specified categories

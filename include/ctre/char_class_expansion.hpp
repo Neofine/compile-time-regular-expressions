@@ -90,13 +90,25 @@ constexpr void expand_impl_set(set<Content...>*, char_class_expansion_result<Max
     (expand_impl<Content, MaxChars>(result), ...);
 }
 
+// Type traits for dispatch
+template <typename T> struct is_character_type : std::false_type {};
+template <auto V> struct is_character_type<character<V>> : std::true_type {};
+template <typename T> struct is_char_range_type : std::false_type {};
+template <auto A, auto B> struct is_char_range_type<char_range<A, B>> : std::true_type {};
+template <typename T> struct is_enumeration_type : std::false_type {};
+template <auto... Cs> struct is_enumeration_type<enumeration<Cs...>> : std::true_type {};
+template <typename T> struct is_set_type : std::false_type {};
+template <typename... Content> struct is_set_type<set<Content...>> : std::true_type {};
+
 template <typename T, size_t MaxChars>
 constexpr void expand_impl(char_class_expansion_result<MaxChars>& result) noexcept {
-    if constexpr (requires { character<T::value>{}; })
+    if constexpr (is_character_type<T>::value)
         expand_impl_char(static_cast<T*>(nullptr), result);
-    else if constexpr (requires { char_range<T::min, T::max>{}; })
+    else if constexpr (is_char_range_type<T>::value)
         expand_impl_range(static_cast<T*>(nullptr), result);
-    else
+    else if constexpr (is_enumeration_type<T>::value)
+        expand_impl_enum(static_cast<T*>(nullptr), result);
+    else if constexpr (is_set_type<T>::value)
         expand_impl_set(static_cast<T*>(nullptr), result);
 }
 

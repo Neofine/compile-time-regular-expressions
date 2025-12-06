@@ -5,8 +5,7 @@
 #include <cstddef>     // For size_t
 #include <cstdint>     // For uint64_t
 
-namespace ctre {
-namespace bitnfa {
+namespace ctre::bitnfa {
 
 // A wrapper around __m128i to represent a set of up to 128 NFA states.
 // Each bit corresponds to an NFA state.
@@ -32,8 +31,6 @@ struct StateMask128 {
         bits = __extension__ (__m128i)(__v2di){(long long)low, (long long)high};
         #endif
     }
-
-    // CONSTEXPR ACCESSORS (for compile-time construction)
 
     constexpr uint64_t get_low() const {
         #if defined(__GNUC__) || defined(__clang__)
@@ -176,7 +173,6 @@ struct StateMask128 {
     }
 };
 
-} // namespace bitnfa
-} // namespace ctre
+} // namespace ctre::bitnfa
 
 #endif // CTRE__BITNFA__STATE_MASK__HPP

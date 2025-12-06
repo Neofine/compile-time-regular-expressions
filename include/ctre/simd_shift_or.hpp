@@ -9,19 +9,17 @@
 #include <iterator>
 
 #if defined(__GNUC__) || defined(__clang__)
-#define HOT_ALWAYS_INLINE __attribute__((always_inline)) inline
+#define HOT_ALWAYS_INLINE [[gnu::always_inline]] inline
 #else
 #define HOT_ALWAYS_INLINE __forceinline
 #endif
 
-namespace ctre {
-namespace simd {
+namespace ctre::simd {
 
 // Forward declaration for verify_equal (used in prefilter functions)
 template <size_t N>
 HOT_ALWAYS_INLINE bool verify_equal(const unsigned char* s, const char* pat);
 
-// Helper: Convert unsigned char* back to iterator type
 template <typename It>
 HOT_ALWAYS_INLINE It uchar_to_iter(const unsigned char* p) {
     // Need const_cast because the internal pointer is const but iterators may need non-const
@@ -532,12 +530,6 @@ inline bool match_string_shift_or(Iterator& current, const EndIterator last, con
 
     constexpr char pattern[] = {static_cast<char>(String)...};
 
-    // BUG FIX #11: Removed broken SIMD dispatch that called MATCH functions instead of SEARCH
-    // The match_string_vector_prefilter and match_string_prefilter_2bytes* functions are
-    // designed to MATCH at the current position, not SEARCH for the pattern in the text.
-    // This caused ALL decomposition searches to fail with 0 matches.
-    // Solution: Always use the Shift-Or algorithm, which correctly searches for the pattern.
-
     static constexpr shift_or_state<string_length> state = []() {
         shift_or_state<string_length> s;
         s.template init_exact_pattern<String...>();
@@ -652,7 +644,6 @@ inline bool match_char_class_shift_or(Iterator& current, const EndIterator last,
     return match_shift_or<Count>(current, last, state);
 }
 
-} // namespace simd
-} // namespace ctre
+} // namespace ctre::simd
 
 #endif

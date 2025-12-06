@@ -13,17 +13,13 @@
 namespace ctre {
 namespace region {
 
-// =============================================================================
 // Constants
-// =============================================================================
 
 constexpr size_t MAX_STATES = 512;       // Max NFA states
 constexpr size_t MAX_REGIONS = 64;       // Max regions in a graph
 constexpr size_t MAX_REGION_SIZE = 128;  // Max vertices per region
 
-// =============================================================================
-// Phase 6.1: Acyclic Graph Construction
-// =============================================================================
+// Acyclic Graph Construction
 
 // Acyclic graph: Original NFA with back edges marked
 // Back edge = edge that goes backwards in topological order
@@ -132,9 +128,7 @@ struct acyclic_graph {
     }
 };
 
-// =============================================================================
-// Phase 6.2: Topological Sort
-// =============================================================================
+// Topological Sort
 
 // Topological sort result
 struct topo_sort_result {
@@ -183,9 +177,7 @@ constexpr topo_sort_result topological_sort(const acyclic_graph<NFA>& dag) {
     return result;
 }
 
-// =============================================================================
-// Phase 6.3: Region Finding
-// =============================================================================
+// Region Finding
 
 // Region: A set of vertices that form a valid cut in the graph
 // Valid cut means all entry edges share same predecessors, all exit edges share same successors
@@ -404,9 +396,7 @@ constexpr auto find_regions(const acyclic_graph<NFA>& dag) {
     return result;
 }
 
-// =============================================================================
-// Phase 6.4: String Extraction
-// =============================================================================
+// String Extraction
 
 // Check if a state is "simple" (literal or small character set)
 template <typename NFA>
@@ -567,9 +557,7 @@ constexpr auto extract_literal_from_regions(const NFA& nfa) {
     return result;  // No extractable literal
 }
 
-// =============================================================================
-// Phase 6.5: Back Edge Merging
-// =============================================================================
+// Back Edge Merging
 
 // Merge regions connected by back edges
 // Back edges can connect regions that seemed independent in the DAG
@@ -653,12 +641,6 @@ constexpr void merge_back_edge_regions(const acyclic_graph<NFA>& dag,
     }
     regions.count = write_idx;
 }
-
-// =============================================================================
-// Phase 6.6: Integration (TODO)
-// =============================================================================
-
-// TODO: Integrate region analysis into decomposition::extract_literal()
 
 } // namespace region
 } // namespace ctre

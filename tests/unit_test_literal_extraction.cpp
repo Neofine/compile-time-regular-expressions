@@ -46,15 +46,12 @@ void test_alternation_extraction() {
     assert(is_foo || is_bar);
 }
 
-// Test 3: Pattern with .* should be disabled
+// Test 3: Pattern with .* - literal extraction should still work
 void test_leading_dot_star_disabled() {
     using Pattern = decltype(ctre::search<".*(hello|world).*test">);
     using AST = ctre::decomposition::unwrap_regex_t<Pattern>;
     
-    // Safeguard should detect leading .*
-    assert(ctre::has_leading_greedy_repeat<AST>() == true);
-    
-    // But literal extraction should still work (for analysis)
+    // Literal extraction should still work (for analysis)
     constexpr auto nfa = ctre::glushkov::glushkov_nfa<AST>();
     constexpr auto path_lit = ctre::dominators::extract_literal_from_dominators(nfa);
     assert(path_lit.has_literal);  // Should extract "test"

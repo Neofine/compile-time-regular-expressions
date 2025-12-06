@@ -507,7 +507,6 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
     }
 
     // SIMD optimization for possessive repetition patterns at runtime (invisible to user)
-    // NOTE: This SIMD decision logic is duplicated in both possessive_repeat and repeat
     // for performance. Extracting to helper causes 70% regression (1.82x → 1.07x) due to
     // template instantiation preventing compile-time optimization. If modifying, update BOTH!
     if constexpr (sizeof...(Content) == 1) {
@@ -637,7 +636,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                         }();
 
                         // PERF: Skip SIMD for very small inputs (overhead dominates)
-                        const auto remaining = last - current;
+                        const auto remaining = static_cast<std::size_t>(last - current);
                         // Check if pattern is contiguous (no gaps)
                         constexpr bool is_contiguous = [] {
                             if constexpr (requires { simd::simd_pattern_trait<ContentType>::is_contiguous; }) {
@@ -653,8 +652,6 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                         constexpr bool use_simd = is_contiguous || (range_size >= 8) || is_negated;
                         if constexpr ((!has_gaps || is_negated) && use_simd) {
                             if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
-                                // FIX: Removed is_ascii_range check - overflow bug is now fixed!
-                                // We can now safely process high-bit characters (0x80-0xFF)
                                 Iterator simd_result =
                                     simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                                 if (simd_result != current) {
@@ -669,7 +666,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                             simd::simd_pattern_trait<ContentType>::is_simd_optimizable;
 
                         if constexpr (explicitly_optimizable) {
-                            const auto remaining = last - current;
+                            const auto remaining = static_cast<std::size_t>(last - current);
                             if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                                 Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                                 if (simd_result != current) {
@@ -788,7 +785,6 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
     }
 
     // SIMD optimization for repetition patterns at runtime (invisible to user)
-    // NOTE: This SIMD decision logic is duplicated in both possessive_repeat and repeat
     // for performance. Extracting to helper causes 70% regression (1.82x → 1.07x) due to
     // template instantiation preventing compile-time optimization. If modifying, update BOTH!
     if constexpr (sizeof...(Content) == 1) {
@@ -901,12 +897,10 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                         // PERF: Skip SIMD for very small inputs (overhead dominates)
                         // For inputs <28 bytes, SIMD overhead (detection, setup, fallback) exceeds benefit
                         // 28 bytes = conservative threshold that avoids regressions on complex patterns
-                        const auto remaining = last - current;
+                        const auto remaining = static_cast<std::size_t>(last - current);
                         constexpr bool use_simd = true;
                         if constexpr ((!has_gaps || is_negated) && use_simd) {
                             if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
-                                // FIX: Removed is_ascii_range check - overflow bug is now fixed!
-                                // We can now safely process high-bit characters (0x80-0xFF)
                                 Iterator simd_result =
                                     simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                                 if (simd_result != current) {
@@ -921,7 +915,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                             simd::simd_pattern_trait<ContentType>::is_simd_optimizable;
 
                         if constexpr (explicitly_optimizable) {
-                            const auto remaining = last - current;
+                            const auto remaining = static_cast<std::size_t>(last - current);
                             if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                                 Iterator simd_result = simd::match_pattern_repeat_simd<ContentType, A, B>(current, last, f);
                                 if (simd_result != current) {

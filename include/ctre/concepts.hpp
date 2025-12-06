@@ -7,9 +7,7 @@
 
 namespace ctre {
 
-// ============================================================================
 // C++20 CONCEPTS FOR TYPE SAFETY
-// ============================================================================
 
 /// Concept: Iterator that points to character data
 template <typename T>
@@ -79,9 +77,7 @@ concept RegexPattern = requires {
     typename T::value_type;
 };
 
-// ============================================================================
 // HELPER TYPE TRAITS (as concepts)
-// ============================================================================
 
 /// Check if iterator is a raw pointer (best case for SIMD)
 template <typename T>

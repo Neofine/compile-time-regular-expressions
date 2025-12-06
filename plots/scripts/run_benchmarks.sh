@@ -11,7 +11,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLOTS_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PLOTS_DIR/build"
-OUTPUT_DIR="$PLOTS_DIR/output/data"
+OUTPUT_DIR="$PLOTS_DIR/output"
 LIB_DIR="$PLOTS_DIR/lib"
 
 # Export library paths
@@ -33,7 +33,7 @@ for arg in "$@"; do
 done
 
 # Build if needed
-if [[ "$REBUILD" == "true" ]] || [[ ! -f "$BUILD_DIR/benchmark_simd" ]]; then
+if [[ "$REBUILD" == "true" ]] || [[ ! -f "$BUILD_DIR/bench_simd" ]]; then
     echo "Building benchmarks..."
     "$SCRIPT_DIR/build.sh"
 fi
@@ -48,12 +48,10 @@ run_category() {
     echo "=== Running $cat benchmarks ==="
 
     echo "  SIMD variant..."
-    "$BUILD_DIR/benchmark_simd" --category "$cat" > "$OUTPUT_DIR/$cat/simd.csv" 2>/dev/null || \
-        "$BUILD_DIR/benchmark_simd" > "$OUTPUT_DIR/$cat/simd.csv"
+    "$BUILD_DIR/bench_simd" "$cat" > "$OUTPUT_DIR/$cat/simd.csv" 2>/dev/null
 
     echo "  Baseline variant..."
-    "$BUILD_DIR/benchmark_baseline" --category "$cat" > "$OUTPUT_DIR/$cat/baseline.csv" 2>/dev/null || \
-        "$BUILD_DIR/benchmark_baseline" > "$OUTPUT_DIR/$cat/baseline.csv"
+    "$BUILD_DIR/bench_baseline" "$cat" > "$OUTPUT_DIR/$cat/baseline.csv" 2>/dev/null
 
     echo "  -> $OUTPUT_DIR/$cat/"
 }
@@ -73,5 +71,5 @@ esac
 echo ""
 echo "=== Benchmark complete ==="
 echo "Output in: $OUTPUT_DIR/"
-find "$OUTPUT_DIR" -name "*.csv" -newer "$BUILD_DIR/benchmark_simd" 2>/dev/null | head -20
+find "$OUTPUT_DIR" -name "*.csv" -newer "$BUILD_DIR/bench_simd" 2>/dev/null | head -20
 

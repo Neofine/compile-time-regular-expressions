@@ -78,8 +78,7 @@ struct segment_info<repeat<A, B, set<Elements...>>> {
     static constexpr auto ranges = Extractor::ranges;
 };
 
-// SIMD helpers
-__attribute__((always_inline)) inline bool check_positions_with_ranges(const char* data, uint32_t mask,
+[[gnu::always_inline]] inline bool check_positions_with_ranges(const char* data, uint32_t mask,
                                                                        const CharRange* ranges, size_t num_ranges) {
     if (num_ranges == 0 || num_ranges > 8 || mask == 0) return true;
     __m128i input = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
@@ -94,7 +93,7 @@ __attribute__((always_inline)) inline bool check_positions_with_ranges(const cha
     return (_mm_movemask_epi8(result) & mask) == mask;
 }
 
-__attribute__((always_inline)) inline bool check_literals_simd(const char* data, uint32_t mask, const char* expected) {
+[[gnu::always_inline]] inline bool check_literals_simd(const char* data, uint32_t mask, const char* expected) {
     if (mask == 0) return true;
     __m128i input = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
     __m128i exp = _mm_loadu_si128(reinterpret_cast<const __m128i*>(expected));

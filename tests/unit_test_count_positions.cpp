@@ -3,91 +3,60 @@
 #include <iostream>
 #include <cassert>
 
-#define TEST(name, expected, ...) \
-    std::cout << "  " << name << ": "; \
-    { constexpr auto result = (__VA_ARGS__); \
-    assert(result == (expected)); \
-    std::cout << "✓ (" << result << " == " << (expected) << ")\n"; }
+template <typename Pattern>
+void test(const char* name, size_t expected) {
+    constexpr auto result = ctre::glushkov::count_positions<Pattern>();
+    std::cout << "  " << name << ": ";
+    assert(result == expected);
+    std::cout << "✓ (" << result << " == " << expected << ")\n";
+}
 
 int main() {
     std::cout << "=== Unit Test: count_positions() ===\n\n";
 
     // Test 1: Single character
-    TEST("character 'a'",
-         ctre::glushkov::count_positions<ctre::character<'a'>>(),
-         1);
+    test<ctre::character<'a'>>("character 'a'", 1);
 
     // Test 2: String literal
-    TEST("string 'abc'",
-         ctre::glushkov::count_positions<ctre::string<'a','b','c'>>(),
-         3);
-
-    TEST("string 'hello'",
-         ctre::glushkov::count_positions<ctre::string<'h','e','l','l','o'>>(),
-         5);
+    test<ctre::string<'a','b','c'>>("string 'abc'", 3);
+    test<ctre::string<'h','e','l','l','o'>>("string 'hello'", 5);
 
     // Test 3: Empty
-    TEST("empty",
-         ctre::glushkov::count_positions<ctre::empty>(),
-         0);
+    test<ctre::empty>("empty", 0);
 
     // Test 4: Sequence
-    TEST("sequence 'ab'.'cd'",
-         ctre::glushkov::count_positions<ctre::sequence<
-             ctre::string<'a','b'>,
-             ctre::string<'c','d'>>>(),
-         4);
+    using Seq1 = ctre::sequence<ctre::string<'a','b'>, ctre::string<'c','d'>>;
+    test<Seq1>("sequence 'ab'.'cd'", 4);
 
     // Test 5: Select (alternation)
-    TEST("select 'ab'|'cd'",
-         ctre::glushkov::count_positions<ctre::select<
-             ctre::string<'a','b'>,
-             ctre::string<'c','d'>>>(),
-         4);
+    using Sel1 = ctre::select<ctre::string<'a','b'>, ctre::string<'c','d'>>;
+    test<Sel1>("select 'ab'|'cd'", 4);
 
     // Test 6: Repeat
-    TEST("repeat 'a'*",
-         ctre::glushkov::count_positions<ctre::repeat<0,0,ctre::character<'a'>>>(),
-         1);
-
-    TEST("repeat 'abc'*",
-         ctre::glushkov::count_positions<ctre::repeat<0,0,ctre::string<'a','b','c'>>>(),
-         3);
+    test<ctre::repeat<0,0,ctre::character<'a'>>>("repeat 'a'*", 1);
+    test<ctre::repeat<0,0,ctre::string<'a','b','c'>>>("repeat 'abc'*", 3);
 
     // Test 7: Complex nesting
-    TEST("(ab|cd)*",
-         ctre::glushkov::count_positions<ctre::repeat<0,0,
-             ctre::select<
-                 ctre::string<'a','b'>,
-                 ctre::string<'c','d'>>>>(),
-         4);
+    using Rep1 = ctre::repeat<0,0, ctre::select<ctre::string<'a','b'>, ctre::string<'c','d'>>>;
+    test<Rep1>("(ab|cd)*", 4);
 
-    TEST("((a|b)(c|d))*",
-         ctre::glushkov::count_positions<ctre::repeat<0,0,
-             ctre::sequence<
-                 ctre::select<ctre::character<'a'>, ctre::character<'b'>>,
-                 ctre::select<ctre::character<'c'>, ctre::character<'d'>>>>>(),
-         4);
+    using Rep2 = ctre::repeat<0,0, ctre::sequence<
+        ctre::select<ctre::character<'a'>, ctre::character<'b'>>,
+        ctre::select<ctre::character<'c'>, ctre::character<'d'>>>>;
+    test<Rep2>("((a|b)(c|d))*", 4);
 
     // Test 8: Character classes (counted as 1 position)
-    TEST("character class [a-z]",
-         ctre::glushkov::count_positions<ctre::set<ctre::char_range<'a','z'>>>(),
-         1);
+    test<ctre::set<ctre::char_range<'a','z'>>>("character class [a-z]", 1);
 
     // Test 9: Any (.)
-    TEST("any (.)",
-         ctre::glushkov::count_positions<ctre::any>(),
-         1);
+    test<ctre::any>("any (.)", 1);
 
     // Test 10: Large pattern
-    TEST("(abc|def).*ghi",
-         ctre::glushkov::count_positions<ctre::sequence<
-             ctre::select<
-                 ctre::string<'a','b','c'>,
-                 ctre::string<'d','e','f'>>,
-             ctre::repeat<0,0,ctre::any>,
-             ctre::string<'g','h','i'>>>(),
-         10);
+    using Large = ctre::sequence<
+        ctre::select<ctre::string<'a','b','c'>, ctre::string<'d','e','f'>>,
+        ctre::repeat<0,0,ctre::any>,
+        ctre::string<'g','h','i'>>;
+    test<Large>("(abc|def).*ghi", 10);
 
     std::cout << "\n✓ All 14 count_positions tests passed!\n";
     return 0;

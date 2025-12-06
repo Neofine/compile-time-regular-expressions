@@ -72,13 +72,14 @@ int main() {
              result.chars[3] == 'X');
     }
 
-    // Test 5: Too large range [0-9] (10 chars, but threshold is 8)
+    // Test 5: Range [0-9] (10 chars, threshold is 11)
     {
         using CharClass = ctre::char_range<'0', '9'>;
         constexpr auto result = ctre::expand_char_class<CharClass>();
 
-        // This should NOT be expandable because it exceeds MAX_CHAR_CLASS_EXPANSION
-        TEST("Range [0-9] - not expandable (too large)", !result.is_expandable);
+        // Should be expandable since 10 <= 11
+        TEST("Range [0-9] - expandable (10 <= 11)", result.is_expandable);
+        TEST("Range [0-9] - count = 10", result.count == 10);
     }
 
     // Test 6: Check expandability without expanding
@@ -88,8 +89,8 @@ int main() {
         constexpr bool exp_a_z = ctre::is_expandable_char_class<ctre::char_range<'a', 'z'>>();
 
         TEST("is_expandable [0-3]", exp_0_3);
-        TEST("is_expandable [0-9] - NO", !exp_0_9);
-        TEST("is_expandable [a-z] - NO", !exp_a_z);
+        TEST("is_expandable [0-9]", exp_0_9);  // 10 <= 11
+        TEST("is_expandable [a-z] - NO", !exp_a_z);  // 26 > 11
     }
 
     // Test 7: Count without expanding
@@ -107,8 +108,8 @@ int main() {
 
     // Test 8: Built-in character classes
     {
-        // digit_chars is char_range<'0','9'> which is 10 chars
-        TEST("digit_chars not expandable", !ctre::is_expandable_char_class<ctre::digit_chars>());
+        // digit_chars is char_range<'0','9'> which is 10 chars (10 <= 11)
+        TEST("digit_chars expandable", ctre::is_expandable_char_class<ctre::digit_chars>());
 
         // space_chars is enumeration with 6 chars
         TEST("space_chars expandable", ctre::is_expandable_char_class<ctre::space_chars>());

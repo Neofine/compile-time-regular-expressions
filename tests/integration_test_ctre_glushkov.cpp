@@ -5,7 +5,7 @@
 #include <cassert>
 
 #define TEST(name) \
-    std::cout << "\nTest: " << name << "\n"; \
+    std::cout << "\nTest: " << #name << "\n"; \
     test_##name();
 
 // Test 1: Simple pattern - verify NFA can be constructed from CTRE pattern
@@ -89,15 +89,10 @@ void test_complex_pattern_with_repeats() {
     using Pattern = decltype(pattern);
     using AST = ctre::decomposition::unwrap_regex_t<Pattern>;
 
-    constexpr auto nfa = ctre::glushkov::glushkov_nfa<AST>();
+    [[maybe_unused]] constexpr auto nfa = ctre::glushkov::glushkov_nfa<AST>();
     std::cout << "  a.*b.*c NFA: " << nfa.state_count << " states\n";
 
-    // Should have leading greedy repeat detected
-    bool has_leading = ctre::has_leading_greedy_repeat<AST>();
-    std::cout << "  Has leading .*: " << has_leading << "\n";
-    assert(!has_leading);  // 'a' comes first, not .*
-
-    // Pattern should still work
+    // Pattern should work correctly
     assert(pattern("a_b_c"));
     assert(pattern("axxxxxbxxxxxc"));
     assert(!pattern("cab"));
@@ -160,23 +155,15 @@ void test_match_with_nfa() {
     std::cout << "  ✓ Match (not search) works with NFA\n";
 }
 
-// Test 9: Safeguard prevents bad patterns
-void test_safeguard_prevents_bad_patterns() {
-    using Pattern = decltype(ctre::search<".*(hello|world).*test">);
-    using AST = ctre::decomposition::unwrap_regex_t<Pattern>;
-
-    // Should detect leading .*
-    bool has_leading = ctre::has_leading_greedy_repeat<AST>();
-    assert(has_leading);
-    std::cout << "  Safeguard detected leading .*: " << has_leading << "\n";
-
-    // Pattern should still match correctly (fallback to standard path)
+// Test 9: Complex patterns with leading .*
+void test_leading_dot_star_patterns() {
+    // Pattern with leading .* should still match correctly
     constexpr auto pattern = ctre::search<".*(hello|world).*test">;
     assert(pattern("hello world test"));
     assert(pattern("world test"));
     assert(!pattern("test"));
 
-    std::cout << "  ✓ Safeguard works and fallback is correct\n";
+    std::cout << "  ✓ Leading .* patterns work correctly\n";
 }
 
 // Test 10: End-to-end with real-world pattern
@@ -210,7 +197,7 @@ int main() {
     TEST(nfa_state_transitions);
     TEST(search_with_literal_prefiltering);
     TEST(match_with_nfa);
-    TEST(safeguard_prevents_bad_patterns);
+    TEST(leading_dot_star_patterns);
     TEST(real_world_url_pattern);
 
     std::cout << "\n====================================================================\n";

@@ -1,64 +1,111 @@
-# CTRE-SIMD Implementation
+# CTRE-SIMD
 
-This repository contains the implementation described in the thesis. The code extends [CTRE](https://github.com/hanickadot/compile-time-regular-expressions) with SIMD acceleration.
+SIMD extensions to [CTRE](https://github.com/hanickadot/compile-time-regular-expressions) (Compile-Time Regular Expressions).
 
-## Code Location
+## What Was Modified
 
-### SIMD Character Class Matching (Section 2.3)
+This implementation adds ~6,500 lines to the original CTRE library:
 
+| Component | Files | Lines | Purpose |
+|-----------|-------|-------|---------|
+| SIMD matching | `simd_*.hpp` (8 files) | ~3,300 | Vectorized character class matching |
+| Pattern analysis | 5 files | ~1,700 | NFA construction, literal extraction |
+| BitNFA engine | `bitnfa/` (12 files) | ~1,500 | Parallel state simulation |
+
+**Original CTRE files are unmodified** except for dispatch logic in `evaluation.hpp` (~20 lines) and `wrapper.hpp` (~15 lines).
+
+## File Overview
+
+### SIMD Matching (`include/ctre/`)
 ```
-include/ctre/simd_character_classes.hpp  - Core range checking [a-z]+, [0-9]+
-include/ctre/simd_multirange.hpp         - Multi-range [a-zA-Z0-9]+
-include/ctre/simd_shufti.hpp             - Shufti algorithm for sparse sets
-include/ctre/simd_repetition.hpp         - Single char repetition a+, b*
-include/ctre/simd_detection.hpp          - Runtime SIMD detection
-```
-
-### Pattern Analysis & Prefiltering (Section 2.4)
-
-```
-include/ctre/glushkov_nfa.hpp            - Glushkov NFA construction
-include/ctre/dominator_analysis.hpp      - Dominator-based literal extraction
-include/ctre/region_analysis.hpp         - Common suffix extraction
-include/ctre/decomposition.hpp           - Prefiltering API
-```
-
-### BitNFA Engine (Section 2.5)
-
-```
-include/ctre/bitnfa/                     - Parallel bit-state NFA (12 files)
-include/ctre/bitnfa/bitnfa_match.hpp     - Main matching logic
-include/ctre/bitnfa/state_mask.hpp       - SIMD state representation
+simd_detection.hpp          - CPU feature detection, size thresholds
+simd_character_classes.hpp  - [a-z]+, [0-9]+ via range comparison
+simd_multirange.hpp         - [a-zA-Z0-9]+ via parallel range checks
+simd_shufti.hpp             - Sparse sets [aeiou]+ via shuffle LUT
+simd_repetition.hpp         - Single character a+, b*
+simd_heuristics.hpp         - Compile-time eligibility checks
+simd_literal_search.hpp     - SIMD substring search
+simd_string_matching.hpp    - Fixed literal matching
 ```
 
-### Integration Points
+### Pattern Analysis (`include/ctre/`)
+```
+glushkov_nfa.hpp            - AST → position NFA
+dominator_analysis.hpp      - Extract required literals (all paths must contain)
+region_analysis.hpp         - Extract common suffixes from alternations
+decomposition.hpp           - Public API for literal extraction
+pattern_traits.hpp          - Type traits for pattern introspection
+```
 
+### BitNFA Engine (`include/ctre/bitnfa/`)
 ```
-include/ctre/evaluation.hpp              - SIMD dispatch (line ~180)
-include/ctre/wrapper.hpp                 - BitNFA integration (line ~80)
+bitnfa_match.hpp            - Entry points: match(), search()
+compiler.hpp                - AST → NFA transitions
+state_mask.hpp              - 128-bit state vector operations
+simd_acceleration.hpp       - SIMD helpers for state updates
 ```
+
+### Modified Original Files
+```
+evaluation.hpp    - SIMD dispatch for repetitions (lines 465-680, 850-930)
+wrapper.hpp       - BitNFA dispatch for alternations (lines 87-100, 160-175)
+```
+
+## Where to Start Reading
+
+1. **Dispatch logic**: `evaluation.hpp:570` - SIMD eligibility checks and dispatch
+2. **Core SIMD**: `simd_character_classes.hpp` - vectorized range matching loop
+3. **Pattern analysis**: `glushkov_nfa.hpp` - regex AST to position NFA
+4. **Literal extraction**: `dominator_analysis.hpp` - required literal identification
 
 ## Running Benchmarks
 
 ```bash
-# Quick benchmark (2 min, 31 patterns)
+# Quick test (~2 min) - compares SIMD vs scalar for 37 patterns
 ./run_individual_benchmarks.sh
 
-# Full benchmark suite
-cd plots
-./scripts/build.sh
-./scripts/run_benchmarks.sh
-python3 generate.py   # generates plots/output/
+# Full suite (~5 min) - generates CSV data and PNG plots
+./plots/scripts/generate_all.sh
+
+# Individual steps:
+./plots/scripts/build.sh              # Compile binaries
+./plots/scripts/run_benchmarks.sh     # Run benchmarks → CSV
+./plots/scripts/measure_codesize.sh   # Measure binary size
+./plots/scripts/measure_compile_time.sh  # Measure compile time
+python3 plots/generate.py             # Generate plots
+
+# Cleanup all generated files
+./cleanup.sh
+```
+
+## Output Structure
+
+```
+plots/output/
+├── simple/simd.csv, baseline.csv
+├── complex/simd.csv, baseline.csv
+├── scaling/simd.csv, baseline.csv
+├── realworld/simd.csv, baseline.csv
+├── codesize.csv
+├── compile_time.csv
+└── figures/*.png
 ```
 
 ## Tests
 
 ```bash
-# Compile a test
-g++ -std=c++20 -I include tests/test_glushkov.cpp -o test && ./test
+g++ -std=c++20 -mavx2 -I include tests/test_glushkov.cpp -o test && ./test
 ```
 
-Key test files:
-- `tests/test_glushkov.cpp` - NFA construction
-- `tests/test_dominators.cpp` - Literal extraction
-- `tests/test_region_analysis.cpp` - Suffix extraction
+Relevant test files:
+- `test_glushkov.cpp` - NFA construction
+- `test_dominators.cpp` - Literal extraction
+- `test_region_analysis.cpp` - Suffix extraction
+- `test_char_class_expansion.cpp` - Character class handling
+- `integration_test_*.cpp` - End-to-end correctness
+
+## Build Requirements
+
+- GCC 10+ or Clang 12+ with C++20 support
+- x86-64 with AVX2 (for SIMD paths)
+- Python 3.8+, matplotlib, pandas, seaborn (for plotting only)

@@ -338,7 +338,7 @@ void test_integration_alternation() {
     using Pattern = ctre::select<ctre::string<'f', 'o', 'o'>, ctre::string<'b', 'a', 'r'>>;
 
     // Test the integrated extract_literal (path -> region fallback)
-    constexpr auto nfa = ctre::glushkov::glushkov_nfa<Pattern>();
+    [[maybe_unused]] constexpr auto nfa = ctre::glushkov::glushkov_nfa<Pattern>();
     auto literal = ctre::decomposition::extract_literal_with_fallback<Pattern>();
 
     if (literal.has_literal) {

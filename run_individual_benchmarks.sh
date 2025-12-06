@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /root/compile-time-regular-expressions
+cd "$(dirname "$0")"
 
 echo "Compiling and running individual benchmarks..."
 echo "Each binary will be small (< 32KB) to avoid I-cache issues"

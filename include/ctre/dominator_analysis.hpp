@@ -13,9 +13,7 @@
 namespace ctre {
 namespace dominators {
 
-// =============================================================================
 // Graph Reachability
-// =============================================================================
 
 // Simple reachability check: can we reach 'to' from 'from'?
 template <typename NFA>
@@ -55,9 +53,7 @@ constexpr bool can_reach_accept(const NFA& nfa, size_t from) {
     return false;
 }
 
-// =============================================================================
 // Dominator Detection
-// =============================================================================
 
 // Check if removing vertex 'v' disconnects start from accept states
 template <typename NFA>

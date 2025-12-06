@@ -58,9 +58,6 @@ void test_unwrap_complex() {
     // Verify we can analyze the structure
     constexpr auto nfa = ctre::glushkov::glushkov_nfa<Unwrapped>();
     assert(nfa.state_count > 5);
-    
-    // Verify safeguard can detect leading .*
-    assert(ctre::has_leading_greedy_repeat<Unwrapped>() == true);
 }
 
 // Test 5: Unwrap match pattern (not just search)
