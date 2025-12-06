@@ -1,5 +1,4 @@
 #!/bin/bash
-# Build script for thesis benchmarks with all engines
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,20 +14,10 @@ LDFLAGS="-L$LIB_DIR/lib -lre2 -lpcre2-8 -lhs -Wl,-rpath,$LIB_DIR/lib"
 
 mkdir -p "$BUILD_DIR"
 
-echo "Building benchmarks with all engines..."
-echo "  CXX: $CXX"
-echo "  Include: $LIB_DIR/include"
-echo "  Libs: $LIB_DIR/lib"
-echo ""
+echo "Building SIMD version..."
+$CXX $CXXFLAGS "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_simd" $LDFLAGS
 
-# SIMD version
-echo "  [1/2] Building SIMD version..."
-$CXX $CXXFLAGS "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_simd" $LDFLAGS 2>&1
+echo "Building baseline version..."
+$CXX $CXXFLAGS -DCTRE_DISABLE_SIMD "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_baseline" $LDFLAGS
 
-# Baseline version
-echo "  [2/2] Building baseline version..."
-$CXX $CXXFLAGS -DCTRE_DISABLE_SIMD "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_baseline" $LDFLAGS 2>&1
-
-echo ""
-echo "Done!"
 ls -la "$BUILD_DIR"/bench_*
