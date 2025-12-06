@@ -158,6 +158,10 @@ def load_benchmark_results(
 
     # Try category subdirectory
     cat_dir = base_dir / category
+    
+    # For arm_nomatch, data is in the arm/ folder with arm_nomatch/ pattern prefix
+    if category == 'arm_nomatch':
+        cat_dir = base_dir / 'arm'
     if cat_dir.exists():
         # Try merged results.csv first
         results_path = cat_dir / 'results.csv'

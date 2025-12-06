@@ -19,11 +19,12 @@ fi
 echo "Compiler: $CXX"
 
 mkdir -p "$OUTPUT_DIR"
-SCALAR_CSV="$OUTPUT_DIR/scalar.csv"
-ORIG_CSV="$OUTPUT_DIR/original.csv"
+# Use filenames that the data loader expects
+SIMD_CSV="$OUTPUT_DIR/simd.csv"
+BASELINE_CSV="$OUTPUT_DIR/baseline.csv"
 
-echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$SCALAR_CSV"
-echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$ORIG_CSV"
+echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$SIMD_CSV"
+echo "Pattern,Engine,Input_Size,Time_ns,Matches" > "$BASELINE_CSV"
 
 # Matching patterns - character class repetitions
 # Format: name@pattern@input_chars
@@ -75,64 +76,85 @@ run_benchmark() {
     local chars=$4
     
     for size in "${SIZES[@]}"; do
-        cat > /tmp/arm_bench.cpp << EOF
+        cat > /tmp/arm_bench.cpp << 'CPPEOF'
 #include <chrono>
 #include <iostream>
 #include <string>
 #include <cstring>
 #include <ctre.hpp>
 
-// Single input, repeated - realistic usage pattern
-// This avoids artificial branch misprediction from diverse inputs
-int main() {
+// Prevent compiler from optimizing away the result
+template<typename T>
+__attribute__((always_inline)) inline void do_not_optimize(T&& value) {
+    asm volatile("" : : "r,m"(value) : "memory");
+}
+
+// Prevent compiler from reordering
+__attribute__((always_inline)) inline void clobber_memory() {
+    asm volatile("" : : : "memory");
+}
+
+int main(int argc, char** argv) {
     std::string input;
-    const char* chars = "$chars";
+    const char* chars = BENCH_CHARS;
     size_t len = strlen(chars);
-    for (size_t i = 0; i < $size; ++i) input += chars[i % len];
+    for (size_t i = 0; i < BENCH_SIZE; ++i) input += chars[i % len];
     
-    auto result = ctre::match<"$pattern">(input);
+    // Force input to exist in memory
+    do_not_optimize(input.data());
+    
+    auto result = ctre::match<BENCH_PATTERN>(input);
     int matched = result ? 1 : 0;
     
     // Warmup
-    for (int i = 0; i < 1000; ++i) volatile bool r = ctre::match<"$pattern">(input);
+    for (int i = 0; i < 1000; ++i) {
+        auto r = ctre::match<BENCH_PATTERN>(input);
+        do_not_optimize(r);
+    }
+    clobber_memory();
     
-    // Benchmark: single input repeated (realistic branch prediction)
+    // Benchmark
     const int ITERS = 10000;
     auto t0 = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < ITERS; ++i) {
-        volatile auto r = ctre::match<"$pattern">(input);
+        auto r = ctre::match<BENCH_PATTERN>(input);
+        do_not_optimize(r);
     }
+    clobber_memory();
     auto t1 = std::chrono::high_resolution_clock::now();
     double ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / ITERS;
     
     std::cout << ns << "," << matched << std::endl;
     return 0;
 }
-EOF
+CPPEOF
         
-        # Scalar version (optimized loops, no SIMD instructions on ARM)
-        if $CXX -std=c++20 -O3 -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_scalar 2>/tmp/arm_err; then
-            if result=$(/tmp/arm_scalar 2>&1); then
+        # Define macros for this specific benchmark
+        BENCH_DEFINES="-DBENCH_PATTERN=\"$pattern\" -DBENCH_CHARS=\"$chars\" -DBENCH_SIZE=$size"
+        
+        # SIMD version (with our scalar loop optimizations, since x86 SIMD is disabled on ARM)
+        if $CXX -std=c++20 -O3 $BENCH_DEFINES -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_simd 2>/tmp/arm_err; then
+            if result=$(/tmp/arm_simd 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
                 match=$(echo "$result" | cut -d',' -f2)
-                echo "${prefix}/${name},CTRE-Scalar,$size,$time_ns,$match" >> "$SCALAR_CSV"
+                echo "${prefix}/${name},CTRE-SIMD,$size,$time_ns,$match" >> "$SIMD_CSV"
             fi
         else
             echo ""
-            echo "Compile error for $name size=$size (scalar):"
+            echo "Compile error for $name size=$size (SIMD):"
             cat /tmp/arm_err | head -20
         fi
         
-        # Original CTRE (recursive templates)
-        if $CXX -std=c++20 -O3 -DCTRE_DISABLE_SIMD -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_orig 2>/tmp/arm_err; then
-            if result=$(/tmp/arm_orig 2>&1); then
+        # Baseline CTRE (with SIMD completely disabled via macro)
+        if $CXX -std=c++20 -O3 -DCTRE_DISABLE_SIMD $BENCH_DEFINES -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_base 2>/tmp/arm_err; then
+            if result=$(/tmp/arm_base 2>&1); then
                 time_ns=$(echo "$result" | cut -d',' -f1)
                 match=$(echo "$result" | cut -d',' -f2)
-                echo "${prefix}/${name},CTRE,$size,$time_ns,$match" >> "$ORIG_CSV"
+                echo "${prefix}/${name},CTRE,$size,$time_ns,$match" >> "$BASELINE_CSV"
             fi
         else
             echo ""
-            echo "Compile error for $name size=$size (original):"
+            echo "Compile error for $name size=$size (Baseline):"
             head -3 /tmp/arm_err
         fi
         
@@ -158,9 +180,9 @@ done
 
 echo ""
 echo "Done! CSV files:"
-wc -l "$SCALAR_CSV" "$ORIG_CSV"
+wc -l "$SIMD_CSV" "$BASELINE_CSV"
 echo ""
-head -5 "$SCALAR_CSV"
+head -5 "$SIMD_CSV"
 echo "..."
 echo ""
-echo "Now run: cd $SCRIPT_DIR/.. && python3 generate.py"
+echo "Now run: cd $SCRIPT_DIR/.. && python3 generate.py --category arm"
