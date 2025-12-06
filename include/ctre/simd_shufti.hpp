@@ -661,7 +661,7 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
         const unsigned char* end_ptr = get_end_pointer(current, last);
         size_t count = 0, rem = end_ptr - p;
 
-#if defined(__SSE4_2__) || defined(__SSSE3__) || defined(__SSE2__)
+#if defined(CTRE_ARCH_X86) && (defined(__SSE4_2__) || defined(__SSSE3__) || defined(__SSE2__))
         if (rem >= 16 && rem < 32) {
             const __m128i upper_lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.upper_nibble_table.data()));
             const __m128i lower_lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.lower_nibble_table.data()));
@@ -706,7 +706,7 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
         }
 #endif
 
-#ifdef __AVX2__
+#if defined(CTRE_ARCH_X86) && defined(__AVX2__)
         if (rem >= 32) {
             const __m256i upper_lut = _mm256_broadcastsi128_si256(
                 _mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.upper_nibble_table.data())));

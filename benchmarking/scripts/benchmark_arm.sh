@@ -99,7 +99,7 @@ EOF
         else
             echo ""
             echo "Compile error for $name size=$size (SIMD):"
-            head -3 /tmp/arm_err
+            cat /tmp/arm_err | head -20
         fi
         
         # Baseline version (explicitly disabled SIMD)

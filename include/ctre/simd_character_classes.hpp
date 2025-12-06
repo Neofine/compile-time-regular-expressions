@@ -223,16 +223,22 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
 
     if constexpr (can_use_simd()) {
         const auto remaining = last - current;
+#if defined(CTRE_ARCH_X86) && defined(__AVX2__)
         if (remaining >= 32) {
-#ifdef __AVX2__
             if (remaining >= 64)
                 current = match_char_class_repeat_avx2<PatternType, MinCount, MaxCount>(current, last, f, count);
             else
                 current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, f, count);
-#elif defined(__SSE4_2__) || defined(__SSE2__)
-            current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, f, count);
-#endif
         }
+#elif defined(CTRE_ARCH_X86) && (defined(__SSE4_2__) || defined(__SSE2__))
+        if (remaining >= 32) {
+            current = match_char_class_repeat_sse42<PatternType, MinCount, MaxCount>(current, last, f, count);
+        }
+#else
+        // Scalar fallback for non-x86 platforms
+        (void)remaining;
+        current = match_char_class_repeat_scalar<PatternType, MinCount, MaxCount>(current, last, f, count);
+#endif
     }
     return (count >= MinCount || MinCount == 0) ? current : start;
 }

@@ -107,6 +107,7 @@ CATEGORIES = {
         'prefix': 'arm/',
         'title': 'ARM Validation',
         'heatmap_size': 256,
+        'skip_heatmap': True,  # Single engine comparison - use bar chart instead
     },
 }
 
@@ -147,6 +148,56 @@ def generate_bar_chart(data, output_dir, config, size=1024):
     plot = BarComparison(title=title)
     plot.plot(data, patterns, labels, size=size)
     plot.save(output_dir / 'bar_comparison.png')
+
+def generate_speedup_bars(data, output_dir, config, size=1024):
+    """Generate speedup bar chart (for ARM - single engine comparison)."""
+    import numpy as np
+
+    prefix = config['prefix']
+    patterns = [p for p in data.patterns if p.startswith(prefix)]
+    labels = [get_pattern_label(p.split('/')[-1]) for p in patterns]
+
+    # Calculate speedups
+    speedups = []
+    for pattern in patterns:
+        simd_time = data.get_time(pattern, 'CTRE-SIMD', size)
+        base_time = data.get_time(pattern, 'CTRE', size)
+        if simd_time and base_time and simd_time > 0:
+            speedups.append(base_time / simd_time)
+        else:
+            speedups.append(1.0)
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    x = np.arange(len(patterns))
+    colors = ['#2166ac' if s >= 1.0 else '#c51b7d' for s in speedups]
+
+    bars = ax.bar(x, speedups, color=colors, edgecolor='white', linewidth=0.5)
+
+    # Reference line at 1.0
+    ax.axhline(y=1.0, color='#666666', linestyle='--', linewidth=1, alpha=0.7)
+
+    # Labels
+    ax.set_xlabel('Pattern', fontsize=11)
+    ax.set_ylabel('Speedup (baseline / SIMD)', fontsize=11)
+    ax.set_title(f"{config['title']} — CTRE-SIMD Speedup ({format_size(size)})", fontsize=12, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=9)
+
+    # Add value labels on bars
+    for bar, speedup in zip(bars, speedups):
+        height = bar.get_height()
+        ax.annotate(f'{speedup:.2f}x',
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3), textcoords="offset points",
+                    ha='center', va='bottom', fontsize=8)
+
+    ax.set_ylim(bottom=0)
+    plt.tight_layout()
+    fig.savefig(output_dir / 'speedup_bars.png', dpi=150, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
+    plt.close(fig)
 
 def generate_simd_delta_bars(data, output_dir, categories):
     """Generate bar chart showing max SIMD time delta per input size.
@@ -426,11 +477,18 @@ def generate_category(category: str, data_dir: Path, output_dir: Path) -> bool:
     except Exception as e:
         logger.error(f"  ✗ Time series: {e}")
 
-    try:
-        generate_heatmap(data, cat_output, config, size=heatmap_size)
-        logger.info("  ✓ Heatmap")
-    except Exception as e:
-        logger.error(f"  ✗ Heatmap: {e}")
+    if config.get('skip_heatmap'):
+        try:
+            generate_speedup_bars(data, cat_output, config, size=heatmap_size)
+            logger.info("  ✓ Speedup bars")
+        except Exception as e:
+            logger.error(f"  ✗ Speedup bars: {e}")
+    else:
+        try:
+            generate_heatmap(data, cat_output, config, size=heatmap_size)
+            logger.info("  ✓ Heatmap")
+        except Exception as e:
+            logger.error(f"  ✗ Heatmap: {e}")
 
     try:
         generate_bar_chart(data, cat_output, config, size=heatmap_size)
