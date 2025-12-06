@@ -765,8 +765,7 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
         }
 
         if (count >= MinCount) {
-            using char_type = typename std::iterator_traits<Iterator>::value_type;
-            return Iterator(const_cast<char_type*>(reinterpret_cast<const char_type*>(p)));
+            return std::next(start, static_cast<typename std::iterator_traits<Iterator>::difference_type>(count));
         }
     }
     return start;
