@@ -51,6 +51,39 @@ template <typename Iterator, typename EndIterator>
     }
 }
 
+// Scalar fallback implementations (available on all platforms)
+template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, const flags& f,
+                                               size_t& count) {
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        if constexpr (requires { SetType::match_char(*current, f); }) {
+            if (SetType::match_char(*current, f)) {
+                ++current;
+                ++count;
+            } else
+                break;
+        } else
+            break;
+    }
+    return current;
+}
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_scalar(Iterator current, const EndIterator& last, const flags& f,
+                                                size_t& count) {
+    const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        char c = *current;
+        bool matches = ci ? ((c | 0x20) == (TargetChar | 0x20)) : (c == TargetChar);
+        if (matches) {
+            ++current;
+            ++count;
+        } else
+            break;
+    }
+    return current;
+}
+
 // Pattern traits for SIMD optimization
 template <typename PatternType>
 struct simd_pattern_trait {
@@ -505,23 +538,6 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
     }
 }
 
-// Scalar fallback
-template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, const flags& f,
-                                               size_t& count) {
-    while (current != last && (MaxCount == 0 || count < MaxCount)) {
-        if constexpr (requires { SetType::match_char(*current, f); }) {
-            if (SetType::match_char(*current, f)) {
-                ++current;
-                ++count;
-            } else
-                break;
-        } else
-            break;
-    }
-    return current;
-}
-
 // Single character AVX2
 template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterator& last, const flags& f,
@@ -686,22 +702,6 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
 }
 
 #endif // CTRE_ARCH_X86
-
-// Single character scalar
-template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_single_char_repeat_scalar(Iterator current, const EndIterator& last, const flags& f,
-                                                size_t& count) {
-    const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
-    char tc = ci ? (TargetChar | 0x20) : TargetChar;
-    for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
-        char c = *current;
-        if (ci)
-            c |= 0x20;
-        if (c != tc)
-            break;
-    }
-    return current;
-}
 
 } // namespace ctre::simd
 
