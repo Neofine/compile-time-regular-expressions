@@ -65,14 +65,14 @@ wrapper.hpp       - BitNFA dispatch for alternations (lines 87-100, 160-175)
 ./run_individual_benchmarks.sh
 
 # Full suite (~5 min) - generates CSV data and PNG plots
-./plots/scripts/generate_all.sh
+./benchmarking/scripts/generate_all.sh
 
 # Individual steps:
-./plots/scripts/build.sh              # Compile binaries
-./plots/scripts/run_benchmarks.sh     # Run benchmarks → CSV
-./plots/scripts/measure_codesize.sh   # Measure binary size
-./plots/scripts/measure_compile_time.sh  # Measure compile time
-python3 plots/generate.py             # Generate plots
+./benchmarking/scripts/build.sh              # Compile binaries
+./benchmarking/scripts/run_benchmarks.sh     # Run benchmarks → CSV
+./benchmarking/scripts/measure_codesize.sh   # Measure binary size
+./benchmarking/scripts/measure_compile_time.sh  # Measure compile time
+python3 benchmarking/generate.py             # Generate plots
 
 # Cleanup all generated files
 ./cleanup.sh
@@ -81,7 +81,7 @@ python3 plots/generate.py             # Generate plots
 ## Output Structure
 
 ```
-plots/output/
+benchmarking/output/
 ├── simple/simd.csv, baseline.csv
 ├── complex/simd.csv, baseline.csv
 ├── scaling/simd.csv, baseline.csv

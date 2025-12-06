@@ -29,8 +29,8 @@ mtent12.txt
 *.backup
 
 # Generated output (regeneratable)
-plots/build/
-plots/output/
+benchmarking/build/
+benchmarking/output/
 results/
 
 # Benchmark binaries

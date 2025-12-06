@@ -8,8 +8,8 @@ DRY_RUN=false
 rm_dir() { [ -d "$1" ] && { $DRY_RUN && echo "rm -rf $1" || rm -rf "$1"; }; }
 rm_pat() { find . -name "$1" -type f 2>/dev/null | while read f; do $DRY_RUN && echo "rm $f" || rm -f "$f"; done; }
 
-rm_dir "plots/build"
-rm_dir "plots/output"
+rm_dir "benchmarking/build"
+rm_dir "benchmarking/output"
 rm_dir "build"
 rm_dir "CMakeFiles"
 rm_dir ".cache"
@@ -38,4 +38,4 @@ $DRY_RUN || find . -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null
 
 [ -f "compile_commands.json" ] && { $DRY_RUN && echo "rm compile_commands.json" || rm -f compile_commands.json; }
 
-echo "Done. Run ./plots/scripts/generate_all.sh to regenerate."
+echo "Done. Run ./benchmarking/scripts/generate_all.sh to regenerate."

@@ -134,7 +134,7 @@ def load_benchmark_results(
     Load benchmark results from a category directory.
 
     Args:
-        base_dir: Base output directory (e.g., plots/output)
+        base_dir: Base output directory (e.g., benchmarking/output)
         category: Category name (e.g., 'simple', 'complex', 'scaling')
         simd_file: Name of SIMD results file
         baseline_file: Name of baseline results file
@@ -196,7 +196,7 @@ def load_benchmark_results(
 
 def load_compile_overhead(base_dir: Path) -> Optional[pd.DataFrame]:
     """Load compilation overhead benchmark data."""
-    # Get plots root directory (plotting/data/loader.py -> plotting -> plots)
+    # Get benchmarking root directory (plotting/data/loader.py -> plotting -> benchmarking)
     plots_root = Path(__file__).parent.parent.parent
 
     # Try multiple possible locations

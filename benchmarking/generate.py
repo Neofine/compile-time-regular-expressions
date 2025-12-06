@@ -103,6 +103,11 @@ CATEGORIES = {
         'heatmap_size': None,  # No heatmap - single size
         'custom_plot': 'instantiation',
     },
+    'arm': {
+        'prefix': 'arm/',
+        'title': 'ARM Validation',
+        'heatmap_size': 256,
+    },
 }
 
 # ============================================================================
