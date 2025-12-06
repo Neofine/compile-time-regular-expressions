@@ -51,50 +51,6 @@ template <typename Iterator, typename EndIterator>
     }
 }
 
-// Scalar fallback implementations (available on all platforms)
-template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, [[maybe_unused]] const flags& f,
-                                               size_t& count) {
-    // Use simd_pattern_trait for range checking (same logic as SIMD path)
-    if constexpr (requires { simd_pattern_trait<SetType>::min_char; simd_pattern_trait<SetType>::max_char; }) {
-        constexpr char min_c = simd_pattern_trait<SetType>::min_char;
-        constexpr char max_c = simd_pattern_trait<SetType>::max_char;
-        while (current != last && (MaxCount == 0 || count < MaxCount)) {
-            char c = *current;
-            if (c >= min_c && c <= max_c) {
-                ++current;
-                ++count;
-            } else
-                break;
-        }
-    } else if constexpr (requires { SetType::match_char(*current, f); }) {
-        while (current != last && (MaxCount == 0 || count < MaxCount)) {
-            if (SetType::match_char(*current, f)) {
-                ++current;
-                ++count;
-            } else
-                break;
-        }
-    }
-    return current;
-}
-
-template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_single_char_repeat_scalar(Iterator current, const EndIterator& last, const flags& f,
-                                                size_t& count) {
-    const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
-    while (current != last && (MaxCount == 0 || count < MaxCount)) {
-        char c = *current;
-        bool matches = ci ? ((c | 0x20) == (TargetChar | 0x20)) : (c == TargetChar);
-        if (matches) {
-            ++current;
-            ++count;
-        } else
-            break;
-    }
-    return current;
-}
-
 // Pattern traits for SIMD optimization
 template <typename PatternType>
 struct simd_pattern_trait {
@@ -241,6 +197,49 @@ using is_char_range_set_trait_t = is_char_range_set_trait<T>;
 
 constexpr bool is_ascii_alpha(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+// Scalar fallback implementations (available on all platforms)
+template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, [[maybe_unused]] const flags& f,
+                                               size_t& count) {
+    if constexpr (requires { simd_pattern_trait<SetType>::min_char; simd_pattern_trait<SetType>::max_char; }) {
+        constexpr char min_c = simd_pattern_trait<SetType>::min_char;
+        constexpr char max_c = simd_pattern_trait<SetType>::max_char;
+        while (current != last && (MaxCount == 0 || count < MaxCount)) {
+            char c = *current;
+            if (c >= min_c && c <= max_c) {
+                ++current;
+                ++count;
+            } else
+                break;
+        }
+    } else if constexpr (requires { SetType::match_char(*current, f); }) {
+        while (current != last && (MaxCount == 0 || count < MaxCount)) {
+            if (SetType::match_char(*current, f)) {
+                ++current;
+                ++count;
+            } else
+                break;
+        }
+    }
+    return current;
+}
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_scalar(Iterator current, const EndIterator& last, const flags& f,
+                                                size_t& count) {
+    const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
+    while (current != last && (MaxCount == 0 || count < MaxCount)) {
+        char c = *current;
+        bool matches = ci ? ((c | 0x20) == (TargetChar | 0x20)) : (c == TargetChar);
+        if (matches) {
+            ++current;
+            ++count;
+        } else
+            break;
+    }
+    return current;
 }
 
 // Unified SIMD dispatcher
