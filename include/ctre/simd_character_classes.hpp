@@ -53,17 +53,28 @@ template <typename Iterator, typename EndIterator>
 
 // Scalar fallback implementations (available on all platforms)
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
-inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, const flags& f,
+inline Iterator match_char_class_repeat_scalar(Iterator current, const EndIterator& last, [[maybe_unused]] const flags& f,
                                                size_t& count) {
-    while (current != last && (MaxCount == 0 || count < MaxCount)) {
-        if constexpr (requires { SetType::match_char(*current, f); }) {
+    // Use simd_pattern_trait for range checking (same logic as SIMD path)
+    if constexpr (requires { simd_pattern_trait<SetType>::min_char; simd_pattern_trait<SetType>::max_char; }) {
+        constexpr char min_c = simd_pattern_trait<SetType>::min_char;
+        constexpr char max_c = simd_pattern_trait<SetType>::max_char;
+        while (current != last && (MaxCount == 0 || count < MaxCount)) {
+            char c = *current;
+            if (c >= min_c && c <= max_c) {
+                ++current;
+                ++count;
+            } else
+                break;
+        }
+    } else if constexpr (requires { SetType::match_char(*current, f); }) {
+        while (current != last && (MaxCount == 0 || count < MaxCount)) {
             if (SetType::match_char(*current, f)) {
                 ++current;
                 ++count;
             } else
                 break;
-        } else
-            break;
+        }
     }
     return current;
 }
@@ -387,7 +398,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     int m = __builtin_ctz(~_mm256_movemask_epi8(r2));
                     current += 32 + m;
                     count += 32 + m;
-                } else {
+        } else {
                     int m = __builtin_ctz(~_mm256_movemask_epi8(r1));
                     current += m;
                     count += m;
@@ -397,14 +408,14 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         }
 
         // 32-byte chunks
-        while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+            while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
             if (!has_at_least_bytes(current, last, 32))
                 break;
 
-            __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-            __m256i result;
+                __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+                __m256i result;
 
-            if (case_insensitive) {
+                if (case_insensitive) {
                 __m256i data_l = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
                 __m256i min_l = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
                 __m256i max_l = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
@@ -413,25 +424,25 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     result = _mm256_or_si256(lt, gt);
                 else
                     result = _mm256_and_si256(_mm256_xor_si256(lt, all_ones), _mm256_xor_si256(gt, all_ones));
-            } else {
+                } else {
                 __m256i lt = _mm256_cmpgt_epi8(min_vec, data), gt = _mm256_cmpgt_epi8(data, max_vec);
                 if constexpr (is_negated)
                     result = _mm256_or_si256(lt, gt);
                 else
                     result = _mm256_and_si256(_mm256_xor_si256(lt, all_ones), _mm256_xor_si256(gt, all_ones));
-            }
+                }
 
-            int mask = _mm256_movemask_epi8(result);
+                int mask = _mm256_movemask_epi8(result);
             if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) {
-                current += 32;
-                count += 32;
-            } else {
+                    current += 32;
+                    count += 32;
+                } else {
                 int m = __builtin_ctz(~mask);
                 current += m;
                 count += m;
-                break;
+                    break;
+                }
             }
-        }
 
         // Scalar tail
         unsigned char min_l = case_insensitive ? (min_c | 0x20) : static_cast<unsigned char>(min_c);
@@ -485,37 +496,37 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         __m128i min_vec = _mm_set1_epi8(min_c);
         __m128i max_vec = _mm_set1_epi8(max_c);
 
-        while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+            while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
             if (!has_at_least_bytes(current, last, 16))
                 break;
 
-            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
-            __m128i result;
+                __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+                __m128i result;
 
-            if (case_insensitive) {
+                if (case_insensitive) {
                 __m128i data_l = _mm_or_si128(data, _mm_set1_epi8(0x20));
                 __m128i min_l = _mm_or_si128(min_vec, _mm_set1_epi8(0x20));
                 __m128i max_l = _mm_or_si128(max_vec, _mm_set1_epi8(0x20));
                 __m128i lt = _mm_cmpgt_epi8(min_l, data_l), gt = _mm_cmpgt_epi8(data_l, max_l);
                 result = _mm_and_si128(_mm_xor_si128(lt, _mm_set1_epi8(static_cast<char>(0xFF))),
                                        _mm_xor_si128(gt, _mm_set1_epi8(static_cast<char>(0xFF))));
-            } else {
+                } else {
                 __m128i lt = _mm_cmpgt_epi8(min_vec, data), gt = _mm_cmpgt_epi8(data, max_vec);
                 result = _mm_and_si128(_mm_xor_si128(lt, _mm_set1_epi8(static_cast<char>(0xFF))),
                                        _mm_xor_si128(gt, _mm_set1_epi8(static_cast<char>(0xFF))));
-            }
+                }
 
-            int mask = _mm_movemask_epi8(result);
+                int mask = _mm_movemask_epi8(result);
             if (static_cast<unsigned>(mask) == 0xFFFFU) {
-                current += 16;
-                count += 16;
-            } else {
+                    current += 16;
+                    count += 16;
+                } else {
                 int m = __builtin_ctz(~mask);
                 current += m;
                 count += m;
-                break;
+                    break;
+                }
             }
-        }
 
         unsigned char min_l = case_insensitive ? (min_c | 0x20) : static_cast<unsigned char>(min_c);
         unsigned char max_l = case_insensitive ? (max_c | 0x20) : static_cast<unsigned char>(max_c);
@@ -541,7 +552,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
 // Single character AVX2
 template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterator& last, const flags& f,
-                                              size_t& count) {
+                                               size_t& count) {
     const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
     const __m256i target = _mm256_set1_epi8(TargetChar);
     const __m256i target_l = ci ? _mm256_set1_epi8(TargetChar | 0x20) : target;
