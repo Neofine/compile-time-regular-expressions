@@ -3,10 +3,13 @@
 
 #include "simd_detection.hpp"
 #include <cstddef>
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
+#endif
 
 namespace ctre::simd {
 
+#ifdef CTRE_ARCH_X86
 template <char C, size_t MaxCount = 0>
 [[nodiscard]] inline size_t match_single_char_avx2(const char* data, size_t length) noexcept {
     const char* p = data;
@@ -50,6 +53,16 @@ template <char C, size_t MaxCount = 0>
     }
     return count;
 }
+#else
+template <char C, size_t MaxCount = 0>
+[[nodiscard]] inline size_t match_single_char_avx2(const char* data, size_t length) noexcept {
+    return match_single_char_scalar<C, MaxCount>(data, length);
+}
+template <char C, size_t MaxCount = 0>
+[[nodiscard]] inline size_t match_single_char_sse42(const char* data, size_t length) noexcept {
+    return match_single_char_scalar<C, MaxCount>(data, length);
+}
+#endif // CTRE_ARCH_X86
 
 template <char C, size_t MaxCount = 0>
 [[nodiscard]] inline size_t match_single_char_scalar(const char* data, size_t length) noexcept {

@@ -2,16 +2,20 @@
 # ARM benchmark - outputs CSV compatible with generate.py
 set -e
 
-# Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OUTPUT_DIR="$SCRIPT_DIR/../output/arm"
 
 echo "ARM Benchmark - CTRE SIMD vs Baseline"
 echo "Platform: $(uname -m)"
-echo "Script dir: $SCRIPT_DIR"
-echo "Project root: $PROJECT_ROOT"
-echo "Output dir: $OUTPUT_DIR"
+
+# Use clang++ on Mac, g++ otherwise
+if [[ "$(uname)" == "Darwin" ]]; then
+    CXX="clang++"
+else
+    CXX="g++"
+fi
+echo "Compiler: $CXX"
 
 mkdir -p "$OUTPUT_DIR"
 SIMD_CSV="$OUTPUT_DIR/simd.csv"
@@ -31,6 +35,24 @@ PATTERNS=(
 
 SIZES=(32 64 128 256 512)
 
+# Test compile first
+echo "Testing compilation..."
+cat > /tmp/arm_test.cpp << 'EOF'
+#include <ctre.hpp>
+#include <string>
+int main() {
+    std::string s = "123";
+    return ctre::match<"[0-9]+">(s) ? 0 : 1;
+}
+EOF
+
+if ! $CXX -std=c++20 -O2 -I "$PROJECT_ROOT/include" /tmp/arm_test.cpp -o /tmp/arm_test 2>&1; then
+    echo "ERROR: Compilation failed. Check your compiler supports C++20."
+    exit 1
+fi
+echo "Compilation OK"
+echo ""
+
 for p in "${PATTERNS[@]}"; do
     IFS='|' read -r name pattern chars <<< "$p"
     
@@ -39,6 +61,7 @@ for p in "${PATTERNS[@]}"; do
 #include <chrono>
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <ctre.hpp>
 
 int main() {
@@ -66,19 +89,29 @@ int main() {
 EOF
         
         # SIMD version
-        if g++ -std=c++20 -O3 -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_simd 2>/dev/null; then
-            result=$(/tmp/arm_simd)
-            time_ns=$(echo "$result" | cut -d',' -f1)
-            match=$(echo "$result" | cut -d',' -f2)
-            echo "arm/$name,CTRE,$size,$time_ns,$match" >> "$SIMD_CSV"
+        if $CXX -std=c++20 -O3 -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_simd 2>/tmp/arm_err; then
+            if result=$(/tmp/arm_simd 2>&1); then
+                time_ns=$(echo "$result" | cut -d',' -f1)
+                match=$(echo "$result" | cut -d',' -f2)
+                echo "arm/$name,CTRE,$size,$time_ns,$match" >> "$SIMD_CSV"
+            fi
+        else
+            echo ""
+            echo "Compile error for $name (SIMD):"
+            cat /tmp/arm_err
         fi
         
         # Baseline version
-        if g++ -std=c++20 -O3 -DCTRE_DISABLE_SIMD -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_base 2>/dev/null; then
-            result=$(/tmp/arm_base)
-            time_ns=$(echo "$result" | cut -d',' -f1)
-            match=$(echo "$result" | cut -d',' -f2)
-            echo "arm/$name,CTRE,$size,$time_ns,$match" >> "$BASE_CSV"
+        if $CXX -std=c++20 -O3 -DCTRE_DISABLE_SIMD -I "$PROJECT_ROOT/include" /tmp/arm_bench.cpp -o /tmp/arm_base 2>/tmp/arm_err; then
+            if result=$(/tmp/arm_base 2>&1); then
+                time_ns=$(echo "$result" | cut -d',' -f1)
+                match=$(echo "$result" | cut -d',' -f2)
+                echo "arm/$name,CTRE,$size,$time_ns,$match" >> "$BASE_CSV"
+            fi
+        else
+            echo ""
+            echo "Compile error for $name (baseline):"
+            cat /tmp/arm_err
         fi
         
         echo -n "."
@@ -88,8 +121,6 @@ done
 
 echo ""
 echo "Done! CSV files:"
-echo "  $SIMD_CSV"
-echo "  $BASE_CSV"
+wc -l "$SIMD_CSV" "$BASE_CSV"
 echo ""
 echo "Now run: cd $SCRIPT_DIR/.. && python3 generate.py"
-

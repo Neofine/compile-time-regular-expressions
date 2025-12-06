@@ -6,11 +6,13 @@
 #include "simd_detection.hpp"
 #include <array>
 #include <cstdint>
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
+#endif
 
 namespace ctre::simd {
 
-#if !defined(CTRE_DISABLE_SIMD) && (defined(__SSE2__) || defined(__AVX2__))
+#if !defined(CTRE_DISABLE_SIMD) && defined(CTRE_ARCH_X86) && (defined(__SSE2__) || defined(__AVX2__))
 
 struct CharRange {
     char lo = 0, hi = 0;

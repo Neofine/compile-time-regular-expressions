@@ -7,7 +7,9 @@
 #include "simd_detection.hpp"
 #include <array>
 #include <cstring>
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
+#endif
 #include <iterator>
 
 namespace ctre {
@@ -217,6 +219,7 @@ struct character_class {
     }
 };
 
+#ifdef CTRE_ARCH_X86
 // Exact range SIMD finders
 namespace exact_range {
 inline bool find_alnum_avx2(const unsigned char* p, const unsigned char* end, const unsigned char*& out) {
@@ -533,6 +536,20 @@ inline bool match_char_class_shufti_ssse3(Iterator& current, EndIterator last, c
     }
     return false;
 }
+
+#else // !CTRE_ARCH_X86
+
+// Fallback implementations for non-x86
+template <typename Iterator, typename EndIterator>
+inline bool match_char_class_shufti_avx2(Iterator& current, EndIterator last, const character_class& cc) {
+    return false;
+}
+template <typename Iterator, typename EndIterator>
+inline bool match_char_class_shufti_ssse3(Iterator& current, EndIterator last, const character_class& cc) {
+    return false;
+}
+
+#endif // CTRE_ARCH_X86
 
 template <typename Iterator, typename EndIterator>
     requires std::is_same_v<std::remove_cvref_t<decltype(*std::declval<Iterator>())>, char>

@@ -5,7 +5,9 @@
 #include "simd_detection.hpp"
 #include <array>
 #include <cstring>
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
+#endif
 #include <iterator>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -272,6 +274,7 @@ inline bool match_shift_or(It& current, const EndIt last, const shift_or_state<P
     return match_shift_or_scalar<PatternLength>(current, last, state);
 }
 
+#ifdef CTRE_ARCH_X86
 template <size_t N, typename It, typename EndIt>
     requires(N > 1 && N <= 32) && std::contiguous_iterator<It> &&
             std::same_as<std::remove_cvref_t<decltype(*std::declval<It>())>, char>
@@ -643,6 +646,35 @@ inline bool match_char_class_shift_or(Iterator& current, const EndIterator last,
 
     return match_shift_or<Count>(current, last, state);
 }
+
+#else // !CTRE_ARCH_X86 - provide stub implementations
+
+template <size_t N>
+HOT_ALWAYS_INLINE bool verify_equal(const unsigned char* s, const char* pat) {
+    return std::memcmp(s, pat, N) == 0;
+}
+
+template <size_t PatternLength, typename It, typename EndIt>
+inline bool match_string_vector_prefilter(It&, const EndIt, const char*) {
+    return false;
+}
+
+template <auto... String, typename Iterator, typename EndIterator>
+inline bool match_string_shift_or(Iterator&, const EndIterator, const flags&) {
+    return false;
+}
+
+template <typename Iterator, typename EndIterator>
+inline bool match_keywords_shift_or(Iterator&, const EndIterator, const flags&) {
+    return false;
+}
+
+template <typename CharClass, size_t Count, typename Iterator, typename EndIterator>
+inline bool match_char_class_shift_or(Iterator& current, const EndIterator last, const flags& f) {
+    return match_shift_or<Count>(current, last, shift_or_state<Count>{});
+}
+
+#endif // CTRE_ARCH_X86
 
 } // namespace ctre::simd
 

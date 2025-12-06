@@ -8,7 +8,9 @@
 #include "simd_detection.hpp"
 #include "simd_repetition.hpp"
 #include <array>
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
+#endif
 #include <type_traits>
 
 namespace ctre::simd {
@@ -235,6 +237,7 @@ inline Iterator match_pattern_repeat_simd(Iterator current, const EndIterator la
     return (count >= MinCount || MinCount == 0) ? current : start;
 }
 
+#ifdef CTRE_ARCH_X86
 // AVX2 character class matching
 template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
 inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator& last, const flags& f, size_t& count) {
@@ -653,6 +656,30 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
     }
     return current;
 }
+
+#else // !CTRE_ARCH_X86 - Fallback to scalar implementations
+
+template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator& last, const flags& f, size_t& count) {
+    return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, f, count);
+}
+
+template <typename SetType, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterator& last, const flags& f, size_t& count) {
+    return match_char_class_repeat_scalar<SetType, MinCount, MaxCount>(current, last, f, count);
+}
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterator& last, const flags& f, size_t& count) {
+    return match_single_char_repeat_scalar<TargetChar, MinCount, MaxCount>(current, last, f, count);
+}
+
+template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>
+inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterator& last, const flags& f, size_t& count) {
+    return match_single_char_repeat_scalar<TargetChar, MinCount, MaxCount>(current, last, f, count);
+}
+
+#endif // CTRE_ARCH_X86
 
 // Single character scalar
 template <char TargetChar, size_t MinCount, size_t MaxCount, typename Iterator, typename EndIterator>

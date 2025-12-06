@@ -4,7 +4,9 @@
 #include "simd_detection.hpp"
 #include "atoms_characters.hpp"
 #include "flags_and_modes.hpp"
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
+#endif
 
 namespace ctre::simd {
 

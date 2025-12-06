@@ -3,7 +3,9 @@
 
 #include "atoms_characters.hpp"
 #include "simd_detection.hpp"
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
+#endif
 #include <tuple>
 #include <utility>
 
@@ -71,6 +73,7 @@ template <typename... R>
 struct is_three_range<set<R...>>
     : std::bool_constant<is_multi_range<set<R...>>::num_ranges == 3 && is_valid_multi_range_v<set<R...>>> {};
 
+#ifdef CTRE_ARCH_X86
 // Range check helpers
 [[nodiscard]] inline __m256i check_range_avx2(__m256i data, unsigned char min_c, unsigned char max_c) noexcept {
     __m256i min_vec = _mm256_set1_epi8(static_cast<char>(min_c));
@@ -151,6 +154,17 @@ template <typename PatternType, typename Iterator, typename EndIterator>
     return match_n_range_avx2_impl<PatternType>(current, last, count,
                                                 std::make_index_sequence<is_multi_range<PatternType>::num_ranges>{});
 }
+#else
+// Non-x86 fallbacks
+template <typename PatternType, typename Iterator, typename EndIterator>
+[[nodiscard]] inline Iterator match_n_range_sse(Iterator current, EndIterator, size_t&) noexcept {
+    return current;
+}
+template <typename PatternType, typename Iterator, typename EndIterator>
+[[nodiscard]] inline Iterator match_n_range_avx2(Iterator current, EndIterator, size_t&) noexcept {
+    return current;
+}
+#endif // CTRE_ARCH_X86
 
 // Scalar range check using fold expression
 template <typename PatternType, size_t... Is>

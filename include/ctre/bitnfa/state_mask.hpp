@@ -1,51 +1,77 @@
 #ifndef CTRE__BITNFA__STATE_MASK__HPP
 #define CTRE__BITNFA__STATE_MASK__HPP
 
+#include "../simd_detection.hpp"
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h> // For __m128i intrinsics
+#endif
 #include <cstddef>     // For size_t
 #include <cstdint>     // For uint64_t
 
 namespace ctre::bitnfa {
 
-// A wrapper around __m128i to represent a set of up to 128 NFA states.
+// A wrapper to represent a set of up to 128 NFA states.
 // Each bit corresponds to an NFA state.
 //
 // Design:
 // - Construction: constexpr-friendly (no SIMD intrinsics)
-// - Matching: SIMD-accelerated (runtime intrinsics)
+// - Matching: SIMD-accelerated on x86 (runtime intrinsics)
 struct StateMask128 {
+#ifdef CTRE_ARCH_X86
     __m128i bits;
+#else
+    uint64_t low_bits;
+    uint64_t high_bits;
+#endif
 
     // CONSTRUCTION (constexpr-friendly)
 
     // Default constructor - all zeros
+#ifdef CTRE_ARCH_X86
     constexpr StateMask128() : bits{} {}
+#else
+    constexpr StateMask128() : low_bits(0), high_bits(0) {}
+#endif
 
+#ifdef CTRE_ARCH_X86
     // Constructor from raw __m128i (for SIMD operations)
     constexpr StateMask128(__m128i val) : bits(val) {}
+#endif
 
     // Constexpr constructor from two 64-bit values
+#ifdef CTRE_ARCH_X86
     constexpr StateMask128(uint64_t low, uint64_t high) : bits{} {
         // Use GCC/Clang vector extension for constexpr
         #if defined(__GNUC__) || defined(__clang__)
         bits = __extension__ (__m128i)(__v2di){(long long)low, (long long)high};
         #endif
     }
+#else
+    constexpr StateMask128(uint64_t low, uint64_t high) : low_bits(low), high_bits(high) {}
+#endif
 
     constexpr uint64_t get_low() const {
+#ifdef CTRE_ARCH_X86
         #if defined(__GNUC__) || defined(__clang__)
         return ((__v2di)bits)[0];
         #else
         return 0; // Fallback
         #endif
+#else
+        return low_bits;
+#endif
     }
 
     constexpr uint64_t get_high() const {
+#ifdef CTRE_ARCH_X86
         #if defined(__GNUC__) || defined(__clang__)
         return ((__v2di)bits)[1];
         #else
         return 0; // Fallback
         #endif
+#else
+        return high_bits;
+#endif
     }
 
     // Set a bit - CONSTEXPR (returns new mask)
@@ -91,31 +117,51 @@ struct StateMask128 {
         }
     }
 
-    // RUNTIME SIMD OPERATIONS (for matching)
+    // RUNTIME OPERATIONS
 
-    // Check if any bit is set (SIMD)
+    // Check if any bit is set
     inline bool any() const {
+#ifdef CTRE_ARCH_X86
         return !_mm_testz_si128(bits, bits);
+#else
+        return (low_bits | high_bits) != 0;
+#endif
     }
 
-    // Check if all bits are zero (SIMD)
+    // Check if all bits are zero
     inline bool none() const {
+#ifdef CTRE_ARCH_X86
         return _mm_testz_si128(bits, bits);
+#else
+        return (low_bits | high_bits) == 0;
+#endif
     }
 
-    // Bitwise AND (SIMD)
+    // Bitwise AND
     inline StateMask128 operator&(const StateMask128& other) const {
+#ifdef CTRE_ARCH_X86
         return StateMask128(_mm_and_si128(bits, other.bits));
+#else
+        return StateMask128(low_bits & other.low_bits, high_bits & other.high_bits);
+#endif
     }
 
-    // Bitwise OR (SIMD)
+    // Bitwise OR
     inline StateMask128 operator|(const StateMask128& other) const {
+#ifdef CTRE_ARCH_X86
         return StateMask128(_mm_or_si128(bits, other.bits));
+#else
+        return StateMask128(low_bits | other.low_bits, high_bits | other.high_bits);
+#endif
     }
 
-    // Bitwise XOR (SIMD)
+    // Bitwise XOR
     inline StateMask128 operator^(const StateMask128& other) const {
+#ifdef CTRE_ARCH_X86
         return StateMask128(_mm_xor_si128(bits, other.bits));
+#else
+        return StateMask128(low_bits ^ other.low_bits, high_bits ^ other.high_bits);
+#endif
     }
 
     // Left shift (constexpr for compile-time, optimized for runtime)
@@ -138,11 +184,12 @@ struct StateMask128 {
         }
     }
 
-    // Fast runtime shift using SIMD (non-constexpr)
+    // Fast runtime shift
     [[nodiscard]] inline StateMask128 shift_runtime(size_t shift_amount) const noexcept {
         if (shift_amount == 0) return *this;
         if (shift_amount >= 128) return StateMask128{};
 
+#ifdef CTRE_ARCH_X86
         const int shift = static_cast<int>(shift_amount);
         if (shift_amount < 64) {
             __m128i shifted = _mm_slli_epi64(bits, shift);
@@ -155,6 +202,10 @@ struct StateMask128 {
             uint64_t low = _mm_extract_epi64(bits, 0);
             return StateMask128(_mm_insert_epi64(_mm_setzero_si128(), low << (shift_amount - 64), 1));
         }
+#else
+        // Use the constexpr implementation
+        return *this << shift_amount;
+#endif
     }
 
     // Equality (constexpr-friendly)

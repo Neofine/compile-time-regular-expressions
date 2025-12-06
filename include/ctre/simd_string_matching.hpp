@@ -4,8 +4,10 @@
 #include "atoms_characters.hpp"
 #include "flags_and_modes.hpp"
 #include "simd_detection.hpp"
+#ifdef CTRE_ARCH_X86
 #include <immintrin.h>
 #include <nmmintrin.h>
+#endif
 #include <iterator>
 
 namespace ctre::simd {
@@ -37,6 +39,7 @@ template <auto... String, typename Iterator, typename EndIterator>
     return match_string_scalar_impl(current, last, f, string_chars, string_length);
 }
 
+#ifdef CTRE_ARCH_X86
 template <typename Iterator, typename EndIterator>
 [[nodiscard]] inline bool match_string_avx2_impl(Iterator& current, [[maybe_unused]] EndIterator last,
                                                   [[maybe_unused]] const flags& f,
@@ -126,6 +129,20 @@ template <typename Iterator, typename EndIterator>
     current = pos;
     return true;
 }
+#else
+template <typename Iterator, typename EndIterator>
+[[nodiscard]] inline bool match_string_avx2_impl(Iterator& current, EndIterator last,
+                                                  const flags& f,
+                                                  const char* string_chars, size_t string_length) noexcept {
+    return match_string_scalar_impl(current, last, f, string_chars, string_length);
+}
+template <typename Iterator, typename EndIterator>
+[[nodiscard]] inline bool match_string_sse42_impl(Iterator& current, EndIterator last,
+                                                   const flags& f,
+                                                   const char* string_chars, size_t string_length) noexcept {
+    return match_string_scalar_impl(current, last, f, string_chars, string_length);
+}
+#endif // CTRE_ARCH_X86
 
 template <typename Iterator, typename EndIterator>
 [[nodiscard]] inline bool match_string_scalar_impl(Iterator& current, EndIterator last,

@@ -4,7 +4,7 @@
 #include "simd_detection.hpp"
 #include <cstring>
 
-#if CTRE_SIMD_ENABLED
+#if CTRE_SIMD_ENABLED && defined(CTRE_ARCH_X86)
 #include <immintrin.h>
 #endif
 

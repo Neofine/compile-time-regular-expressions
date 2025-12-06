@@ -1,10 +1,12 @@
 #ifndef CTRE__SIMD_ROSE__HPP
 #define CTRE__SIMD_ROSE__HPP
 
-#include <immintrin.h>
 #include "utility.hpp"
 #include "flags_and_modes.hpp"
 #include "simd_detection.hpp"
+#ifdef CTRE_ARCH_X86
+#include <immintrin.h>
+#endif
 
 namespace ctre::simd {
 
@@ -14,6 +16,7 @@ template <char C1, char C2, char C3, typename Iterator, typename EndIterator>
     const auto remaining = last - current;
     if (remaining < 3) return last;
 
+#ifdef CTRE_ARCH_X86
     if (get_simd_capability() >= SIMD_CAPABILITY_SSE42) {
         __m128i c1_vec = _mm_set1_epi8(C1);
         __m128i c2_vec = _mm_set1_epi8(C2);
@@ -36,7 +39,9 @@ template <char C1, char C2, char C3, typename Iterator, typename EndIterator>
             if (*pos == C1 && *(pos + 1) == C2 && *(pos + 2) == C3) return pos;
             ++pos;
         }
-    } else {
+    } else
+#endif
+    {
         Iterator pos = current;
         Iterator search_end = last - 2;
         while (pos <= search_end) {

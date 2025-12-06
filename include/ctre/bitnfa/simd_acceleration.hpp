@@ -7,6 +7,9 @@
 #include <cstddef>
 #include <cstring>
 #include <string_view>
+#ifdef CTRE_ARCH_X86
+#include <immintrin.h>
+#endif
 
 namespace ctre::bitnfa {
 
@@ -19,6 +22,7 @@ template <typename CharClassType>
         constexpr char max_char = simd::simd_pattern_trait<CharClassType>::max_char;
         const char* current = begin;
 
+#ifdef CTRE_ARCH_X86
         if (simd::can_use_simd() && simd::get_simd_capability() >= simd::SIMD_CAPABILITY_AVX2) {
             const char* scan_end = end - 32;
             __m256i min_vec = _mm256_set1_epi8(min_char);
@@ -39,6 +43,7 @@ template <typename CharClassType>
                 current += 32;
             }
         }
+#endif
 
         while (current < end &&
                static_cast<unsigned char>(*current) >= static_cast<unsigned char>(min_char) &&
@@ -56,6 +61,12 @@ template <typename CharClassType>
 // Find next position where a character class matches
 template <typename CharClassType>
 [[nodiscard]] inline const char* simd_find_char_class(const char* begin, const char* end) noexcept {
+#ifndef CTRE_ARCH_X86
+    // Scalar fallback for non-x86
+    for (const char* p = begin; p != end; ++p)
+        if (CharClassType::match_char(*p, flags{})) return p;
+    return end;
+#else
     if (!simd::can_use_simd()) {
         for (const char* p = begin; p != end; ++p)
             if (CharClassType::match_char(*p, flags{})) return p;
@@ -123,10 +134,15 @@ template <typename CharClassType>
     for (const char* p = begin; p != end; ++p)
         if (CharClassType::match_char(*p, flags{})) return p;
     return end;
+#endif // CTRE_ARCH_X86
 }
 
 // Find next single character
 [[nodiscard]] inline const char* simd_find_char(const char* begin, const char* end, char target) noexcept {
+#ifndef CTRE_ARCH_X86
+    const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
+    return r ? r : end;
+#else
     if (!simd::can_use_simd() || end - begin < 16) {
         const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
         return r ? r : end;
@@ -151,6 +167,7 @@ template <typename CharClassType>
 
     const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
     return r ? r : end;
+#endif // CTRE_ARCH_X86
 }
 
 // Pattern Analysis for Acceleration
