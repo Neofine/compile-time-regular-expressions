@@ -10,7 +10,7 @@ OUTPUT_FILE="$PLOTS_DIR/output/codesize.csv"
 CXX="${CXX:-g++}"
 CXXFLAGS="-std=c++20 -O3 -march=native -I$PROJECT_ROOT/include -ffunction-sections -fdata-sections"
 
-mkdir -p "$BUILD_DIR"
+mkdir -p "$BUILD_DIR" "$(dirname "$OUTPUT_FILE")"
 echo "Pattern,Variant,Total_Bytes,Text_Bytes" > "$OUTPUT_FILE"
 
 measure() {
