@@ -68,11 +68,11 @@ struct BitNFA {
             StateMask128 exception_succ;
 
             while (low) {
-                exception_succ = exception_succ | exception_successors[__builtin_ctzll(low)];
+                exception_succ = exception_succ | exception_successors[static_cast<size_t>(__builtin_ctzll(low))];
                 low &= (low - 1);
             }
             while (high) {
-                exception_succ = exception_succ | exception_successors[64 + __builtin_ctzll(high)];
+                exception_succ = exception_succ | exception_successors[64 + static_cast<size_t>(__builtin_ctzll(high))];
                 high &= (high - 1);
             }
             all_succ = typical_succ | exception_succ;

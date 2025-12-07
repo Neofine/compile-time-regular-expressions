@@ -97,6 +97,12 @@ CATEGORIES = {
         'title': 'Fallback Patterns (No SIMD)',
         'heatmap_size': 1024,
     },
+    'adversarial': {
+        'prefix': 'Adversarial/',
+        'title': 'Adversarial Patterns (SIMD Unfavorable)',
+        'heatmap_size': 16,  # Smallest common size for scalable patterns
+        'skip_heatmap': True,  # Fixed-size patterns don't have common size
+    },
     'instantiation': {
         'prefix': 'Instantiation/',
         'title': 'Regex Instantiation Time',
@@ -147,13 +153,80 @@ def generate_bar_chart(data, output_dir, config, size=1024):
     """Generate bar comparison chart."""
     prefix = config['prefix']
     patterns = [p for p in data.patterns if p.startswith(prefix)]
-    labels = [get_pattern_label(p.split('/')[-1]) for p in patterns]  # Show regex if short
+    
+    # For each pattern, find the size that has data (for fixed-size patterns)
+    actual_sizes = []
+    valid_patterns = []
+    for pattern in patterns:
+        pattern_data = data.filter_pattern(pattern)
+        available_sizes = pattern_data['Input_Size'].unique()
+        use_size = size if size in available_sizes else (available_sizes[0] if len(available_sizes) > 0 else None)
+        if use_size is not None:
+            actual_sizes.append(use_size)
+            valid_patterns.append(pattern)
+    
+    if not valid_patterns:
+        return
+    
+    # Create labels with sizes if they vary
+    if len(set(actual_sizes)) > 1:
+        labels = [f"{get_pattern_label(p.split('/')[-1])}\n({format_size(s)})" 
+                  for p, s in zip(valid_patterns, actual_sizes)]
+        title = f"{config['title']} — Comparison (various sizes)"
+    else:
+        labels = [get_pattern_label(p.split('/')[-1]) for p in valid_patterns]
+        title = f"{config['title']} — Comparison ({format_size(actual_sizes[0])})"
 
-    title = f"{config['title']} — Comparison ({format_size(size)})"
+    # Use custom plotting for variable sizes
+    if len(set(actual_sizes)) > 1:
+        _generate_variable_size_bar_chart(data, output_dir, config, valid_patterns, labels, actual_sizes, title)
+    else:
+        plot = BarComparison(title=title)
+        plot.plot(data, valid_patterns, labels, size=actual_sizes[0])
+        plot.save(output_dir / 'bar_comparison.png')
 
-    plot = BarComparison(title=title)
-    plot.plot(data, patterns, labels, size=size)
-    plot.save(output_dir / 'bar_comparison.png')
+def _generate_variable_size_bar_chart(data, output_dir, config, patterns, labels, sizes, title):
+    """Generate bar chart for patterns with different fixed sizes."""
+    import numpy as np
+    
+    engines = ['CTRE-SIMD', 'CTRE-Scalar', 'CTRE', 'RE2', 'PCRE2', 'Hyperscan', 'std::regex']
+    engine_colors = {
+        'CTRE-SIMD': '#1f77b4',
+        'CTRE-Scalar': '#17becf',
+        'CTRE': '#2ca02c',
+        'RE2': '#d62728',
+        'PCRE2': '#9467bd',
+        'Hyperscan': '#ff7f0e',
+        'std::regex': '#8c564b',
+    }
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    x = np.arange(len(patterns))
+    width = 0.12
+    
+    for i, engine in enumerate(engines):
+        times = []
+        for pattern, size in zip(patterns, sizes):
+            t = data.get_time(pattern, engine, size)
+            times.append(t if t else 0)
+        
+        if any(t > 0 for t in times):
+            offset = (i - len(engines)/2 + 0.5) * width
+            ax.bar(x + offset, times, width, label=engine, color=engine_colors.get(engine, '#333333'))
+    
+    ax.set_xlabel('Pattern', fontsize=11)
+    ax.set_ylabel('Time (ns)', fontsize=11)
+    ax.set_title(title, fontsize=12, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=9)
+    ax.set_yscale('log')
+    ax.legend(loc='upper right', fontsize=9)
+    
+    plt.tight_layout()
+    fig.savefig(output_dir / 'bar_comparison.png', dpi=150, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
+    plt.close(fig)
 
 def generate_speedup_bars(data, output_dir, config, size=1024):
     """Generate speedup bar chart (for ARM - CTRE-Scalar vs CTRE comparison)."""
@@ -163,12 +236,21 @@ def generate_speedup_bars(data, output_dir, config, size=1024):
     patterns = [p for p in data.patterns if p.startswith(prefix)]
     labels = [get_pattern_label(p.split('/')[-1]) for p in patterns]
 
-    # Calculate speedups (CTRE-Scalar vs original CTRE)
+    # Calculate speedups - for each pattern, use the size that has data
     speedups = []
+    actual_sizes = []
     for pattern in patterns:
+        # Find an available size for this pattern
+        pattern_data = data.filter_pattern(pattern)
+        available_sizes = pattern_data['Input_Size'].unique()
+        
+        # Prefer the requested size, otherwise use the first available
+        use_size = size if size in available_sizes else (available_sizes[0] if len(available_sizes) > 0 else size)
+        actual_sizes.append(use_size)
+        
         # Try CTRE-Scalar first, fall back to CTRE-SIMD for backwards compat
-        scalar_time = data.get_time(pattern, 'CTRE-Scalar', size) or data.get_time(pattern, 'CTRE-SIMD', size)
-        base_time = data.get_time(pattern, 'CTRE', size)
+        scalar_time = data.get_time(pattern, 'CTRE-Scalar', use_size) or data.get_time(pattern, 'CTRE-SIMD', use_size)
+        base_time = data.get_time(pattern, 'CTRE', use_size)
         if scalar_time and base_time and scalar_time > 0:
             speedups.append(base_time / scalar_time)
         else:
@@ -185,12 +267,19 @@ def generate_speedup_bars(data, output_dir, config, size=1024):
     # Reference line at 1.0
     ax.axhline(y=1.0, color='#666666', linestyle='--', linewidth=1, alpha=0.7)
 
-    # Labels
+    # Labels - include size in label if sizes vary
+    if len(set(actual_sizes)) > 1:
+        labels_with_size = [f"{l}\n({format_size(s)})" for l, s in zip(labels, actual_sizes)]
+        title_suffix = "various sizes"
+    else:
+        labels_with_size = labels
+        title_suffix = format_size(actual_sizes[0]) if actual_sizes else format_size(size)
+    
     ax.set_xlabel('Pattern', fontsize=11)
     ax.set_ylabel('Speedup (baseline / SIMD)', fontsize=11)
-    ax.set_title(f"{config['title']} — CTRE-Scalar Speedup ({format_size(size)})", fontsize=12, fontweight='bold')
+    ax.set_title(f"{config['title']} — CTRE-Scalar Speedup ({title_suffix})", fontsize=12, fontweight='bold')
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=9)
+    ax.set_xticklabels(labels_with_size, rotation=45, ha='right', fontsize=9)
 
     # Add value labels on bars
     for bar, speedup in zip(bars, speedups):

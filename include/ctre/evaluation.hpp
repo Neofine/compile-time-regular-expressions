@@ -590,7 +590,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
                     const auto remaining_input = last - current;
                     if constexpr (simd::is_multi_range<ContentType>::is_valid) {
-                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
+                        if (remaining_input >= 0 && static_cast<std::size_t>(remaining_input) >= simd::SIMD_REPETITION_THRESHOLD) {
                             Iterator multirange_result =
                                 simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
                             if (multirange_result != current) {
@@ -601,7 +601,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
                     // Try Shufti for sparse character sets (like [aeiou])
                     if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                        if (remaining_input >= simd::SIMD_SHUFTI_THRESHOLD) {
+                        if (remaining_input >= 0 && static_cast<std::size_t>(remaining_input) >= simd::SIMD_SHUFTI_THRESHOLD) {
                             Iterator shufti_result =
                                 simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
                             if (shufti_result != current) {
@@ -849,7 +849,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                     // Examples: [a-zA-Z], [0-9a-fA-F], [a-eA-Eg-kG-K], etc.
                     const auto remaining_input = last - current;
                     if constexpr (simd::is_multi_range<ContentType>::is_valid) {
-                        if (remaining_input >= simd::SIMD_REPETITION_THRESHOLD) {
+                        if (remaining_input >= 0 && static_cast<std::size_t>(remaining_input) >= simd::SIMD_REPETITION_THRESHOLD) {
                             Iterator multirange_result =
                                 simd::match_multirange_repeat<ContentType, A, B>(current, last, f);
                             if (multirange_result != current) {
@@ -860,7 +860,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
                     // Try Shufti for sparse character sets (like [aeiou])
                     if constexpr (simd::shufti_pattern_trait<ContentType>::should_use_shufti) {
-                        if (remaining_input >= simd::SIMD_SHUFTI_THRESHOLD) {
+                        if (remaining_input >= 0 && static_cast<std::size_t>(remaining_input) >= simd::SIMD_SHUFTI_THRESHOLD) {
                             Iterator shufti_result =
                                 simd::match_pattern_repeat_shufti<ContentType, A, B>(current, last, f);
                             if (shufti_result != current) {

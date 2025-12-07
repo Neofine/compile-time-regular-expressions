@@ -140,11 +140,11 @@ template <typename CharClassType>
 // Find next single character
 [[nodiscard]] inline const char* simd_find_char(const char* begin, const char* end, char target) noexcept {
 #ifndef CTRE_ARCH_X86
-    const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
+    const char* r = static_cast<const char*>(memchr(begin, target, static_cast<size_t>(end - begin)));
     return r ? r : end;
 #else
     if (!simd::can_use_simd() || end - begin < 16) {
-        const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
+        const char* r = static_cast<const char*>(memchr(begin, target, static_cast<size_t>(end - begin)));
         return r ? r : end;
     }
 
@@ -156,7 +156,7 @@ template <typename CharClassType>
         while (current <= scan_end) {
             __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(current));
             int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(data, target_vec));
-            if (mask != 0) return current + __builtin_ctz(mask);
+            if (mask != 0) return current + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
             current += 32;
         }
 
@@ -165,7 +165,7 @@ template <typename CharClassType>
         return end;
     }
 
-    const char* r = static_cast<const char*>(memchr(begin, target, end - begin));
+    const char* r = static_cast<const char*>(memchr(begin, target, static_cast<size_t>(end - begin)));
     return r ? r : end;
 #endif // CTRE_ARCH_X86
 }

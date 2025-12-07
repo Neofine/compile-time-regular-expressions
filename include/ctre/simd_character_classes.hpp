@@ -344,9 +344,9 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 current += 16;
                 count += 16;
             } else {
-                int m = __builtin_ctz(~mask);
+                auto m = __builtin_ctz(static_cast<unsigned>(~mask));
                 current += m;
-                count += m;
+                count += static_cast<size_t>(m);
                 return current;
             }
             if (current >= last)
@@ -394,27 +394,27 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 count += 64;
             } else {
                 if (_mm256_testc_si256(r1, all_ones)) {
-                    int m = __builtin_ctz(~_mm256_movemask_epi8(r2));
+                    auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r2)));
                     current += 32 + m;
-                    count += 32 + m;
+                    count += 32 + static_cast<size_t>(m);
         } else {
-                    int m = __builtin_ctz(~_mm256_movemask_epi8(r1));
+                    auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r1)));
                     current += m;
-                    count += m;
+                    count += static_cast<size_t>(m);
                 }
                 break;
             }
         }
 
         // 32-byte chunks
-            while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
+        while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
             if (!has_at_least_bytes(current, last, 32))
                 break;
 
-                __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-                __m256i result;
+            __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
+            __m256i result;
 
-                if (case_insensitive) {
+            if (case_insensitive) {
                 __m256i data_l = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
                 __m256i min_l = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
                 __m256i max_l = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
@@ -423,25 +423,25 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                     result = _mm256_or_si256(lt, gt);
                 else
                     result = _mm256_and_si256(_mm256_xor_si256(lt, all_ones), _mm256_xor_si256(gt, all_ones));
-                } else {
+            } else {
                 __m256i lt = _mm256_cmpgt_epi8(min_vec, data), gt = _mm256_cmpgt_epi8(data, max_vec);
                 if constexpr (is_negated)
                     result = _mm256_or_si256(lt, gt);
                 else
                     result = _mm256_and_si256(_mm256_xor_si256(lt, all_ones), _mm256_xor_si256(gt, all_ones));
-                }
-
-                int mask = _mm256_movemask_epi8(result);
-            if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) {
-                    current += 32;
-                    count += 32;
-                } else {
-                int m = __builtin_ctz(~mask);
-                current += m;
-                count += m;
-                    break;
-                }
             }
+
+            int mask = _mm256_movemask_epi8(result);
+            if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) {
+                current += 32;
+                count += 32;
+            } else {
+                auto m = __builtin_ctz(static_cast<unsigned>(~mask));
+                current += m;
+                count += static_cast<size_t>(m);
+                break;
+            }
+        }
 
         // Scalar tail
         unsigned char min_l = case_insensitive ? (min_c | 0x20) : static_cast<unsigned char>(min_c);
@@ -495,37 +495,37 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
         __m128i min_vec = _mm_set1_epi8(min_c);
         __m128i max_vec = _mm_set1_epi8(max_c);
 
-            while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
+        while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
             if (!has_at_least_bytes(current, last, 16))
                 break;
 
-                __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
-                __m128i result;
+            __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
+            __m128i result;
 
-                if (case_insensitive) {
+            if (case_insensitive) {
                 __m128i data_l = _mm_or_si128(data, _mm_set1_epi8(0x20));
                 __m128i min_l = _mm_or_si128(min_vec, _mm_set1_epi8(0x20));
                 __m128i max_l = _mm_or_si128(max_vec, _mm_set1_epi8(0x20));
                 __m128i lt = _mm_cmpgt_epi8(min_l, data_l), gt = _mm_cmpgt_epi8(data_l, max_l);
                 result = _mm_and_si128(_mm_xor_si128(lt, _mm_set1_epi8(static_cast<char>(0xFF))),
                                        _mm_xor_si128(gt, _mm_set1_epi8(static_cast<char>(0xFF))));
-                } else {
+            } else {
                 __m128i lt = _mm_cmpgt_epi8(min_vec, data), gt = _mm_cmpgt_epi8(data, max_vec);
                 result = _mm_and_si128(_mm_xor_si128(lt, _mm_set1_epi8(static_cast<char>(0xFF))),
                                        _mm_xor_si128(gt, _mm_set1_epi8(static_cast<char>(0xFF))));
-                }
-
-                int mask = _mm_movemask_epi8(result);
-            if (static_cast<unsigned>(mask) == 0xFFFFU) {
-                    current += 16;
-                    count += 16;
-                } else {
-                int m = __builtin_ctz(~mask);
-                current += m;
-                count += m;
-                    break;
-                }
             }
+
+            int mask = _mm_movemask_epi8(result);
+            if (static_cast<unsigned>(mask) == 0xFFFFU) {
+                current += 16;
+                count += 16;
+            } else {
+                auto m = __builtin_ctz(static_cast<unsigned>(~mask));
+                current += m;
+                count += static_cast<size_t>(m);
+                break;
+            }
+        }
 
         unsigned char min_l = case_insensitive ? (min_c | 0x20) : static_cast<unsigned char>(min_c);
         unsigned char max_l = case_insensitive ? (max_c | 0x20) : static_cast<unsigned char>(max_c);
@@ -567,9 +567,9 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             current += 16;
             count += 16;
         } else {
-            int m = __builtin_ctz(~_mm_movemask_epi8(result));
+            auto m = __builtin_ctz(static_cast<unsigned>(~_mm_movemask_epi8(result)));
             current += m;
-            count += m;
+            count += static_cast<size_t>(m);
             return current;
         }
         if (current >= last)
@@ -585,9 +585,9 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             current += 32;
             count += 32;
         } else {
-            int m = __builtin_ctz(~_mm256_movemask_epi8(result));
+            auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(result)));
             current += m;
-            count += m;
+            count += static_cast<size_t>(m);
             return current;
         }
         if (current >= last)
@@ -610,13 +610,13 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             count += 64;
         } else {
             if (_mm256_testc_si256(r1, all_ones)) {
-                int m = __builtin_ctz(~_mm256_movemask_epi8(r2));
+                auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r2)));
                 current += 32 + m;
-                count += 32 + m;
+                count += 32 + static_cast<size_t>(m);
             } else {
-                int m = __builtin_ctz(~_mm256_movemask_epi8(r1));
+                auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r1)));
                 current += m;
-                count += m;
+                count += static_cast<size_t>(m);
             }
             break;
         }
@@ -633,9 +633,9 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             current += 32;
             count += 32;
         } else {
-            int m = __builtin_ctz(~_mm256_movemask_epi8(result));
+            auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(result)));
             current += m;
-            count += m;
+            count += static_cast<size_t>(m);
             break;
         }
     }
@@ -671,9 +671,9 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
             current += 16;
             count += 16;
         } else {
-            int m = __builtin_ctz(~mask);
+            auto m = __builtin_ctz(static_cast<unsigned>(~mask));
             current += m;
-            count += m;
+            count += static_cast<size_t>(m);
             break;
         }
     }

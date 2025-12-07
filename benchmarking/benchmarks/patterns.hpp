@@ -1,15 +1,12 @@
 #pragma once
 // ============================================================================
-// PATTERN REGISTRY - Easy to add new patterns
+// PATTERN REGISTRY - Input generators for benchmarking
 // ============================================================================
 //
-// To add a new pattern:
-// 1. Add a PatternDef with name, regex pattern, and input generator
-// 2. Register it in get_all_patterns()
-// 3. Add CTRE benchmark call in run_ctre_benchmarks()
-//
-// Input generators should produce strings where ~50% match the pattern
-// to ensure fair benchmarking (forces full string scanning).
+// Match rates:
+// - Simple/Complex/Scaling/RealWorld: 100% matching (measures match speed)
+// - NonMatch: 0% matching (measures rejection speed)
+// - Fallback: 50% matching (tests mixed behavior)
 
 #include <functional>
 #include <random>
@@ -25,37 +22,33 @@ namespace bench {
 // Generator function type: (length, count, seed) -> vector of strings
 using InputGenerator = std::function<std::vector<std::string>(size_t, int, unsigned int)>;
 
-// Digits [0-9]+ : 50% all digits, 50% end with letter
+// Digits [0-9]+ : 100% matching (all digits)
 inline std::vector<std::string> gen_digits(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int> d(0, 9);
-    std::uniform_int_distribution<int> l(0, 25);
 
     for (int i = 0; i < count; i++) {
         std::string s(len, '0');
-        for (size_t j = 0; j < len - 1; j++)
+        for (size_t j = 0; j < len; j++)
             s[j] = '0' + d(rng);
-        s[len - 1] = (i % 2 == 0) ? ('0' + d(rng)) : ('a' + l(rng));
         inputs.push_back(std::move(s));
     }
     return inputs;
 }
 
-// Letters [a-z]+ : 50% all letters, 50% end with digit
+// Letters [a-z]+ : 100% matching (all letters)
 inline std::vector<std::string> gen_letters(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int> l(0, 25);
-    std::uniform_int_distribution<int> d(0, 9);
 
     for (int i = 0; i < count; i++) {
         std::string s(len, 'a');
-        for (size_t j = 0; j < len - 1; j++)
+        for (size_t j = 0; j < len; j++)
             s[j] = 'a' + l(rng);
-        s[len - 1] = (i % 2 == 0) ? ('a' + l(rng)) : ('0' + d(rng));
         inputs.push_back(std::move(s));
     }
     return inputs;
@@ -148,27 +141,24 @@ inline std::vector<std::string> gen_no_ing_suffix(size_t len, int count, unsigne
     return inputs;
 }
 
-// Vowels [aeiou]+ : 50% all vowels, 50% end with consonant
+// Vowels [aeiou]+ : 100% matching (all vowels)
 inline std::vector<std::string> gen_vowels(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
     std::mt19937 rng(seed);
     const char vowels[] = {'a', 'e', 'i', 'o', 'u'};
-    const char consonants[] = "bcdfghjklmnpqrstvwxyz";
     std::uniform_int_distribution<int> v(0, 4);
-    std::uniform_int_distribution<int> c(0, 20);
 
     for (int i = 0; i < count; i++) {
         std::string s(len, 'a');
-        for (size_t j = 0; j < len - 1; j++)
+        for (size_t j = 0; j < len; j++)
             s[j] = vowels[v(rng)];
-        s[len - 1] = (i % 2 == 0) ? vowels[v(rng)] : consonants[c(rng)];
         inputs.push_back(std::move(s));
     }
     return inputs;
 }
 
-// Hex [0-9a-fA-F]+ : 50% valid hex, 50% end with 'g'
+// Hex [0-9a-fA-F]+ : 100% matching (all hex)
 inline std::vector<std::string> gen_hex(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -178,15 +168,14 @@ inline std::vector<std::string> gen_hex(size_t len, int count, unsigned int seed
 
     for (int i = 0; i < count; i++) {
         std::string s(len, '0');
-        for (size_t j = 0; j < len - 1; j++)
+        for (size_t j = 0; j < len; j++)
             s[j] = hex_chars[h(rng)];
-        s[len - 1] = (i % 2 == 0) ? hex_chars[h(rng)] : 'g';
         inputs.push_back(std::move(s));
     }
     return inputs;
 }
 
-// Alphanumeric [a-zA-Z0-9]+ : 50% valid, 50% end with special char
+// Alphanumeric [a-zA-Z0-9]+ : 100% matching (all alphanumeric)
 inline std::vector<std::string> gen_alnum(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -196,9 +185,8 @@ inline std::vector<std::string> gen_alnum(size_t len, int count, unsigned int se
 
     for (int i = 0; i < count; i++) {
         std::string s(len, 'a');
-        for (size_t j = 0; j < len - 1; j++)
+        for (size_t j = 0; j < len; j++)
             s[j] = alnum[a(rng)];
-        s[len - 1] = (i % 2 == 0) ? alnum[a(rng)] : '@';
         inputs.push_back(std::move(s));
     }
     return inputs;
@@ -288,7 +276,7 @@ inline std::vector<std::string> gen_literal_hello(size_t len, int count, unsigne
     return inputs;
 }
 
-// Digit-dot-digit pattern [0-9]+\.[0-9]+ (like simple decimals)
+// Digit-dot-digit pattern [0-9]+\.[0-9]+ : 100% matching
 inline std::vector<std::string> gen_decimal(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -310,10 +298,6 @@ inline std::vector<std::string> gen_decimal(size_t len, int count, unsigned int 
         while (s.length() < len)
             s += ('0' + d(rng));
 
-        // 50% invalid: remove dot or add letter
-        if (i % 2 == 1) {
-            s[half] = 'x';  // Replace dot with letter
-        }
         inputs.push_back(std::move(s));
     }
     return inputs;
@@ -459,7 +443,7 @@ inline std::vector<std::string> gen_dot_star_x(size_t len, int count, unsigned i
     return inputs;
 }
 
-// Mixed pattern [a-z]+[0-9]+ : 50% valid, 50% all letters
+// Mixed pattern [a-z]+[0-9]+ : 100% matching (letters then digits)
 inline std::vector<std::string> gen_letters_then_digits(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -474,15 +458,9 @@ inline std::vector<std::string> gen_letters_then_digits(size_t len, int count, u
         for (size_t j = 0; j < split; j++)
             s[j] = 'a' + l(rng);
 
-        if (i % 2 == 0) {
-            // Valid: letters then digits
-            for (size_t j = split; j < len; j++)
-                s[j] = '0' + d(rng);
-        } else {
-            // Invalid: all letters
-            for (size_t j = split; j < len; j++)
-                s[j] = 'a' + l(rng);
-        }
+        for (size_t j = split; j < len; j++)
+            s[j] = '0' + d(rng);
+
         inputs.push_back(std::move(s));
     }
     return inputs;
@@ -520,7 +498,7 @@ inline std::vector<std::string> gen_alternation(size_t len, int count, unsigned 
     return inputs;
 }
 
-// Upper case [A-Z]+ : 50% valid, 50% end with lowercase
+// Upper case [A-Z]+ : 100% matching (all uppercase)
 inline std::vector<std::string> gen_upper(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -529,9 +507,8 @@ inline std::vector<std::string> gen_upper(size_t len, int count, unsigned int se
 
     for (int i = 0; i < count; i++) {
         std::string s(len, 'A');
-        for (size_t j = 0; j < len - 1; j++)
+        for (size_t j = 0; j < len; j++)
             s[j] = 'A' + u(rng);
-        s[len - 1] = (i % 2 == 0) ? ('A' + u(rng)) : ('a' + u(rng));
         inputs.push_back(std::move(s));
     }
     return inputs;
@@ -981,8 +958,7 @@ inline std::vector<std::string> gen_html_tag(size_t len, int count, unsigned int
     return inputs;
 }
 
-// JSON-like key: "[a-zA-Z_][a-zA-Z0-9_]*"
-// Generates: "user_name" style identifiers
+// JSON-like key: "[a-zA-Z_][a-zA-Z0-9_]*" : 100% matching
 inline std::vector<std::string> gen_json_key(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -999,18 +975,12 @@ inline std::vector<std::string> gen_json_key(size_t len, int count, unsigned int
             s += rest_chars[rest_idx(rng)];
         }
         s = s.substr(0, len);
-
-        // 50% invalid: start with digit
-        if (i % 2 == 1 && len > 0) {
-            s[0] = '0' + (rng() % 10);
-        }
         inputs.push_back(std::move(s));
     }
     return inputs;
 }
 
-// HTTP method + path: (GET|POST)/[a-z]+
-// Generates: "GET/users" or "POST/login" style strings
+// HTTP method + path: (GET|POST)/[a-z]+ : 100% matching
 inline std::vector<std::string> gen_http_method(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -1026,18 +996,12 @@ inline std::vector<std::string> gen_http_method(size_t len, int count, unsigned 
             s += 'a' + letter(rng);
         }
         s = s.substr(0, len);
-
-        // 50% invalid: wrong method
-        if (i % 2 == 1 && len >= 4) {
-            s[0] = 'X';  // "XET" or "XOST" won't match
-        }
         inputs.push_back(std::move(s));
     }
     return inputs;
 }
 
-// Simple URL: http://[a-z]+
-// Generates: "http://example" style strings
+// Simple URL: http://[a-z]+ : 100% matching
 inline std::vector<std::string> gen_url(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -1050,18 +1014,12 @@ inline std::vector<std::string> gen_url(size_t len, int count, unsigned int seed
             s += 'a' + letter(rng);
         }
         s = s.substr(0, len);
-
-        // 50% invalid: bad scheme
-        if (i % 2 == 1 && len >= 5) {
-            s[0] = 'X';  // "Xttp://" won't match
-        }
         inputs.push_back(std::move(s));
     }
     return inputs;
 }
 
-// Key=value format: [a-z]+=[0-9]+
-// Generates: "name=123" style strings
+// Key=value format: [a-z]+=[0-9]+ : 100% matching
 inline std::vector<std::string> gen_key_value(size_t len, int count, unsigned int seed) {
     std::vector<std::string> inputs;
     inputs.reserve(count);
@@ -1084,11 +1042,6 @@ inline std::vector<std::string> gen_key_value(size_t len, int count, unsigned in
             s += '0' + digit(rng);
         }
         s = s.substr(0, len);
-
-        // 50% invalid: digit in key
-        if (i % 2 == 1 && eq_pos > 0) {
-            s[0] = '0' + digit(rng);
-        }
         inputs.push_back(std::move(s));
     }
     return inputs;
@@ -1456,6 +1409,1247 @@ inline std::vector<std::string> gen_fusion_digits64(size_t /*len*/, int count, u
         std::string s;
         for (int j = 0; j < 64; j++)
             s += ('0' + d(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// ============================================================================
+// ADVERSARIAL PATTERNS - Not favorable for SIMD
+// ============================================================================
+
+// Fixed literal "test" - 100% matching
+inline std::vector<std::string> gen_literal_test(size_t len, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) {
+        // Must be exactly "test" for full match
+        if (len >= 4) {
+            inputs.push_back("test");
+        } else {
+            inputs.push_back(std::string("test").substr(0, len));
+        }
+    }
+    return inputs;
+}
+
+// Fixed literal "hello world" - 100% matching
+inline std::vector<std::string> gen_literal_hello_world(size_t len, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    const std::string lit = "hello world";
+    for (int i = 0; i < count; i++) {
+        if (len >= lit.size()) {
+            inputs.push_back(lit);
+        } else {
+            inputs.push_back(lit.substr(0, len));
+        }
+    }
+    return inputs;
+}
+
+// Single character "a" - 100% matching
+inline std::vector<std::string> gen_single_a_only(size_t len, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) {
+        // Pattern is just "a", so input must be exactly "a"
+        inputs.push_back("a");
+    }
+    (void)len; // Unused - pattern is fixed length
+    return inputs;
+}
+
+// Bounded [a-z]{2,4} - 100% matching (2-4 letters)
+inline std::vector<std::string> gen_bounded_short(size_t len, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> letter(0, 25);
+    std::uniform_int_distribution<size_t> bound_len(2, 4);
+
+    for (int i = 0; i < count; i++) {
+        size_t actual_len = std::min(bound_len(rng), len);
+        actual_len = std::max(actual_len, size_t(2)); // At least 2
+        std::string s;
+        for (size_t j = 0; j < actual_len; j++) {
+            s += 'a' + letter(rng);
+        }
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// "id:[0-9]+" - 100% matching
+inline std::vector<std::string> gen_prefix_digits(size_t len, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> digit(0, 9);
+
+    for (int i = 0; i < count; i++) {
+        std::string s = "id:";
+        size_t digits_needed = (len > 3) ? (len - 3) : 1;
+        for (size_t j = 0; j < digits_needed; j++) {
+            s += '0' + digit(rng);
+        }
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// (cat|dog|bird|fish) - 100% matching one of the words
+inline std::vector<std::string> gen_word_choice(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    const char* words[] = {"cat", "dog", "bird", "fish"};
+    std::uniform_int_distribution<int> w(0, 3);
+
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(words[w(rng)]);
+    }
+    return inputs;
+}
+
+// (www\.)?example - 100% matching
+inline std::vector<std::string> gen_optional_www(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+
+    for (int i = 0; i < count; i++) {
+        if (choice(rng) == 0) {
+            inputs.push_back("example");
+        } else {
+            inputs.push_back("www.example");
+        }
+    }
+    return inputs;
+}
+
+// .*middle.* - 100% matching (contains "middle")
+inline std::vector<std::string> gen_contains_middle(size_t len, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> letter(0, 25);
+
+    const std::string target = "middle";
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        // Add some prefix
+        size_t prefix_len = (len > target.size() + 2) ? (len - target.size()) / 2 : 0;
+        for (size_t j = 0; j < prefix_len; j++) {
+            s += 'a' + letter(rng);
+        }
+        s += target;
+        // Add suffix to reach len
+        while (s.length() < len) {
+            s += 'a' + letter(rng);
+        }
+        inputs.push_back(s.substr(0, std::max(len, target.size())));
+    }
+    return inputs;
+}
+
+// === LONGER ADVERSARIAL PATTERNS ===
+
+// Long literal: 32 char string - 100% matching
+inline std::vector<std::string> gen_literal_32(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    const std::string lit = "abcdefghijklmnopqrstuvwxyz012345";
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(lit);
+    }
+    return inputs;
+}
+
+// Interleaved: a.b.c.d.e.f.g.h - 100% matching
+inline std::vector<std::string> gen_interleaved(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> any(32, 126);  // printable ASCII
+    
+    for (int i = 0; i < count; i++) {
+        // Pattern is a.b.c.d.e.f.g.h where . is any char
+        std::string s;
+        s += 'a'; s += static_cast<char>(any(rng));
+        s += 'b'; s += static_cast<char>(any(rng));
+        s += 'c'; s += static_cast<char>(any(rng));
+        s += 'd'; s += static_cast<char>(any(rng));
+        s += 'e'; s += static_cast<char>(any(rng));
+        s += 'f'; s += static_cast<char>(any(rng));
+        s += 'g'; s += static_cast<char>(any(rng));
+        s += 'h';
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// Greek letters alternation - 100% matching
+inline std::vector<std::string> gen_greek_word(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    const char* words[] = {"alpha", "beta", "gamma", "delta", "epsilon", 
+                           "zeta", "eta", "theta", "iota", "kappa"};
+    std::uniform_int_distribution<int> w(0, 9);
+    
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(words[w(rng)]);
+    }
+    return inputs;
+}
+
+// Counted repetition a{20} - 100% matching (exactly 20 'a's)
+inline std::vector<std::string> gen_a_20(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(std::string(20, 'a'));
+    }
+    return inputs;
+}
+
+// Nested optional: (a(b(c)?)?)?d - 100% matching
+inline std::vector<std::string> gen_nested_optional(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 3);
+    
+    for (int i = 0; i < count; i++) {
+        switch (choice(rng)) {
+            case 0: inputs.push_back("d"); break;           // just d
+            case 1: inputs.push_back("ad"); break;          // a + d
+            case 2: inputs.push_back("abd"); break;         // a + b + d
+            case 3: inputs.push_back("abcd"); break;        // a + b + c + d
+        }
+    }
+    return inputs;
+}
+
+// Prefix with alternation suffix: data_(one|two|three|four|five) - 100% matching
+inline std::vector<std::string> gen_data_suffix(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    const char* suffixes[] = {"one", "two", "three", "four", "five"};
+    std::uniform_int_distribution<int> s(0, 4);
+    
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(std::string("data_") + suffixes[s(rng)]);
+    }
+    return inputs;
+}
+
+// === WORST CASE GENERATORS ===
+
+// a? - optional single char: "" or "a"
+inline std::vector<std::string> gen_optional_a(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+    
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(choice(rng) ? "a" : "");
+    }
+    return inputs;
+}
+
+// a?b?c?d? - 0 to 4 chars
+inline std::vector<std::string> gen_optional_4(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> bits(0, 15);
+    
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        int b = bits(rng);
+        if (b & 1) s += 'a';
+        if (b & 2) s += 'b';
+        if (b & 4) s += 'c';
+        if (b & 8) s += 'd';
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// Single letter a-z
+inline std::vector<std::string> gen_single_letter(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> letter(0, 25);
+    
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(std::string(1, 'a' + letter(rng)));
+    }
+    return inputs;
+}
+
+// Empty or "x" for x* pattern
+inline std::vector<std::string> gen_empty_or_x(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 2);
+    
+    for (int i = 0; i < count; i++) {
+        int c = choice(rng);
+        if (c == 0) inputs.push_back("");
+        else if (c == 1) inputs.push_back("x");
+        else inputs.push_back("xx");
+    }
+    return inputs;
+}
+
+// "ab" only
+inline std::vector<std::string> gen_ab_only(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back("ab");
+    }
+    return inputs;
+}
+
+// "abc" only
+inline std::vector<std::string> gen_abc_only(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back("abc");
+    }
+    return inputs;
+}
+
+// === EVEN MORE EXTREME GENERATORS ===
+
+// "a" or "b" for a|b
+inline std::vector<std::string> gen_a_or_b(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(choice(rng) ? "a" : "b");
+    }
+    return inputs;
+}
+
+// Just "." for escaped dot
+inline std::vector<std::string> gen_dot_only(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(".");
+    }
+    return inputs;
+}
+
+// "", "a", "b", "ab" for a?b?
+inline std::vector<std::string> gen_optional_ab(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 3);
+    for (int i = 0; i < count; i++) {
+        switch(choice(rng)) {
+            case 0: inputs.push_back(""); break;
+            case 1: inputs.push_back("a"); break;
+            case 2: inputs.push_back("b"); break;
+            case 3: inputs.push_back("ab"); break;
+        }
+    }
+    return inputs;
+}
+
+// Short "a", "aa", "aaa" for a+
+inline std::vector<std::string> gen_short_a(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> len_dist(1, 4);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(std::string(len_dist(rng), 'a'));
+    }
+    return inputs;
+}
+
+// "a.b" for a\.b
+inline std::vector<std::string> gen_a_dot_b(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back("a.b");
+    }
+    return inputs;
+}
+
+// "a" or "ab" for ab?
+inline std::vector<std::string> gen_a_or_ab(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(choice(rng) ? "a" : "ab");
+    }
+    return inputs;
+}
+
+// "a" or "" for a|
+inline std::vector<std::string> gen_a_or_empty(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(choice(rng) ? "a" : "");
+    }
+    return inputs;
+}
+
+// === ROUND 3 GENERATORS ===
+
+// Any single char for "."
+inline std::vector<std::string> gen_any_single(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(32, 126);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(std::string(1, static_cast<char>(c(rng))));
+    }
+    return inputs;
+}
+
+// Any two chars for ".."
+inline std::vector<std::string> gen_any_two(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(32, 126);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        s += static_cast<char>(c(rng));
+        s += static_cast<char>(c(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// "abcd" only
+inline std::vector<std::string> gen_abcd_only(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcd");
+    return inputs;
+}
+
+// "aa" only for a{2}
+inline std::vector<std::string> gen_aa_only(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("aa");
+    return inputs;
+}
+
+// "a" or "aa" for a{1,2}
+inline std::vector<std::string> gen_a_or_aa(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(choice(rng) ? "a" : "aa");
+    }
+    return inputs;
+}
+
+// "ac" or "abc" for ab?c
+inline std::vector<std::string> gen_ac_or_abc(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(choice(rng) ? "ac" : "abc");
+    }
+    return inputs;
+}
+
+// "axbxc" for a.b.c (any char between)
+inline std::vector<std::string> gen_axbxc(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(32, 126);
+    for (int i = 0; i < count; i++) {
+        std::string s = "a";
+        s += static_cast<char>(c(rng));
+        s += "b";
+        s += static_cast<char>(c(rng));
+        s += "c";
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// Ends with 'a' for .*a
+inline std::vector<std::string> gen_ends_a(size_t len, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(98, 122); // b-z
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (size_t j = 0; j + 1 < len; j++) {
+            s += static_cast<char>(c(rng));
+        }
+        s += 'a';
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// "ab" or "cd" for ab|cd
+inline std::vector<std::string> gen_ab_or_cd(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 1);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(choice(rng) ? "ab" : "cd");
+    }
+    return inputs;
+}
+
+// ac, ad, bc, bd for (a|b)(c|d)
+inline std::vector<std::string> gen_ac_ad_bc_bd(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 3);
+    const char* opts[] = {"ac", "ad", "bc", "bd"};
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(opts[choice(rng)]);
+    }
+    return inputs;
+}
+
+// "hello" only
+inline std::vector<std::string> gen_hello(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("hello");
+    return inputs;
+}
+
+// === ROUND 4 GENERATORS ===
+
+inline std::vector<std::string> gen_foobar(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("foobar");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_testing(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("testing");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_8char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdefgh");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_15char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdefghijklmno");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_aab(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("aab");
+    return inputs;
+}
+
+// "y", "xy", "xxy" for x*y
+inline std::vector<std::string> gen_xy(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 2);
+    for (int i = 0; i < count; i++) {
+        switch(choice(rng)) {
+            case 0: inputs.push_back("y"); break;
+            case 1: inputs.push_back("xy"); break;
+            case 2: inputs.push_back("xxy"); break;
+        }
+    }
+    return inputs;
+}
+
+// === ROUND 5 GENERATORS ===
+
+inline std::vector<std::string> gen_16char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdefghijklmnop");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_20char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdefghijklmnopqrst");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_24char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdefghijklmnopqrstuvwx");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_28char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdefghijklmnopqrstuvwxyzab");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_greek(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 7);
+    const char* words[] = {"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"};
+    for (int i = 0; i < count; i++) inputs.push_back(words[choice(rng)]);
+    return inputs;
+}
+
+inline std::vector<std::string> gen_optional_6(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> bits(0, 63);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        int b = bits(rng);
+        if (b & 1) s += 'a';
+        if (b & 2) s += 'b';
+        if (b & 4) s += 'c';
+        if (b & 8) s += 'd';
+        if (b & 16) s += 'e';
+        if (b & 32) s += 'f';
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_a10(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("aaaaaaaaaa");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_a50(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back(std::string(50, 'a'));
+    return inputs;
+}
+
+inline std::vector<std::string> gen_abcde(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcde");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_pairs(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 5);
+    const char* pairs[] = {"aa", "bb", "cc", "dd", "ee", "ff"};
+    for (int i = 0; i < count; i++) inputs.push_back(pairs[choice(rng)]);
+    return inputs;
+}
+
+inline std::vector<std::string> gen_foo_xxx_bar(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c('a', 'z');
+    for (int i = 0; i < count; i++) {
+        std::string s = "foo";
+        s += static_cast<char>(c(rng));
+        s += static_cast<char>(c(rng));
+        s += static_cast<char>(c(rng));
+        s += "bar";
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_dot_sep_6(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(32, 126);
+    for (int i = 0; i < count; i++) {
+        std::string s = "a";
+        s += static_cast<char>(c(rng));
+        s += "b";
+        s += static_cast<char>(c(rng));
+        s += "c";
+        s += static_cast<char>(c(rng));
+        s += "d";
+        s += static_cast<char>(c(rng));
+        s += "e";
+        s += static_cast<char>(c(rng));
+        s += "f";
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_4x3(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 3);
+    const char* words[] = {"foo", "bar", "baz", "qux"};
+    for (int i = 0; i < count; i++) inputs.push_back(words[choice(rng)]);
+    return inputs;
+}
+
+// === ROUND 6 GENERATORS ===
+
+inline std::vector<std::string> gen_64char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) 
+        inputs.push_back("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_a100(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back(std::string(100, 'a'));
+    return inputs;
+}
+
+inline std::vector<std::string> gen_a200(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back(std::string(200, 'a'));
+    return inputs;
+}
+
+inline std::vector<std::string> gen_numbers(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 11);
+    const char* words[] = {"one", "two", "three", "four", "five", "six", 
+                           "seven", "eight", "nine", "ten", "eleven", "twelve"};
+    for (int i = 0; i < count; i++) inputs.push_back(words[choice(rng)]);
+    return inputs;
+}
+
+inline std::vector<std::string> gen_a1a1a(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> letter('a', 'z');
+    std::uniform_int_distribution<int> digit('0', '9');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        s += static_cast<char>(letter(rng));
+        s += static_cast<char>(digit(rng));
+        s += static_cast<char>(letter(rng));
+        s += static_cast<char>(digit(rng));
+        s += static_cast<char>(letter(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_optional_8(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> bits(0, 255);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        int b = bits(rng);
+        if (b & 1) s += 'a';
+        if (b & 2) s += 'b';
+        if (b & 4) s += 'c';
+        if (b & 8) s += 'd';
+        if (b & 16) s += 'e';
+        if (b & 32) s += 'f';
+        if (b & 64) s += 'g';
+        if (b & 128) s += 'h';
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_id_name(size_t len, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> digit('0', '9');
+    std::uniform_int_distribution<int> letter('a', 'z');
+    std::uniform_int_distribution<size_t> num_len(1, std::max(size_t(1), len/4));
+    for (int i = 0; i < count; i++) {
+        std::string s = "id_";
+        size_t n = num_len(rng);
+        for (size_t j = 0; j < n; j++) s += static_cast<char>(digit(rng));
+        s += "_name_";
+        for (size_t j = 0; j < n; j++) s += static_cast<char>(letter(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_10_pairs(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 9);
+    const char* pairs[] = {"aa", "bb", "cc", "dd", "ee", "ff", "gg", "hh", "ii", "jj"};
+    for (int i = 0; i < count; i++) inputs.push_back(pairs[choice(rng)]);
+    return inputs;
+}
+
+inline std::vector<std::string> gen_dot_sep_10(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(32, 126);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (char ch = 'a'; ch <= 'j'; ch++) {
+            if (ch != 'a') s += static_cast<char>(c(rng));
+            s += ch;
+        }
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_start_range_end(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(0, 61);
+    for (int i = 0; i < count; i++) {
+        std::string s = "start";
+        for (int j = 0; j < 10; j++) {
+            int v = c(rng);
+            if (v < 26) s += static_cast<char>('a' + v);
+            else if (v < 52) s += static_cast<char>('A' + v - 26);
+            else s += static_cast<char>('0' + v - 52);
+        }
+        s += "end";
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_alt_16(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 15);
+    for (int i = 0; i < count; i++) {
+        inputs.push_back(std::string(1, 'a' + choice(rng)));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_class_555(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> letter('a', 'z');
+    std::uniform_int_distribution<int> digit('0', '9');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (int j = 0; j < 5; j++) s += static_cast<char>(letter(rng));
+        for (int j = 0; j < 5; j++) s += static_cast<char>(digit(rng));
+        for (int j = 0; j < 5; j++) s += static_cast<char>(letter(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_class_55(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> letter('a', 'z');
+    std::uniform_int_distribution<int> digit('0', '9');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (int j = 0; j < 5; j++) s += static_cast<char>(letter(rng));
+        for (int j = 0; j < 5; j++) s += static_cast<char>(digit(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// === ROUND 7 GENERATORS ===
+
+inline std::vector<std::string> gen_alt_seq_4(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> bit(0, 1);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        s += bit(rng) ? 'a' : 'b';
+        s += bit(rng) ? 'c' : 'd';
+        s += bit(rng) ? 'e' : 'f';
+        s += bit(rng) ? 'g' : 'h';
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_dot_chain_12(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(32, 126);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (char ch = 'a'; ch <= 'l'; ch++) {
+            if (ch != 'a') s += static_cast<char>(c(rng));
+            s += ch;
+        }
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_abcdefgh(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdefgh");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_abcdef(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abcdef");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_varied_alt(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 4);
+    const char* words[] = {"a", "bb", "ccc", "dddd", "eeeee"};
+    for (int i = 0; i < count; i++) inputs.push_back(words[choice(rng)]);
+    return inputs;
+}
+
+inline std::vector<std::string> gen_lit_dot_lit(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(32, 126);
+    for (int i = 0; i < count; i++) {
+        std::string s = "ab";
+        s += static_cast<char>(c(rng));
+        s += "cd";
+        s += static_cast<char>(c(rng));
+        s += "ef";
+        s += static_cast<char>(c(rng));
+        s += "gh";
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_5_words(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 4);
+    const char* words[] = {"the", "quick", "brown", "fox", "jumps"};
+    for (int i = 0; i < count; i++) inputs.push_back(words[choice(rng)]);
+    return inputs;
+}
+
+inline std::vector<std::string> gen_optional_10(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> bits(0, 1023);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        int b = bits(rng);
+        for (int j = 0; j < 10; j++) {
+            if (b & (1 << j)) s += static_cast<char>('a' + j);
+        }
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// === 4-CHAR INVESTIGATION ===
+inline std::vector<std::string> gen_wxyz(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("wxyz");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_1234(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("1234");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_best(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("best");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_fest(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("fest");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_rest(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("rest");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_abab(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("abab");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_aaaa(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("aaaa");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_aabb(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) inputs.push_back("aabb");
+    return inputs;
+}
+
+// === MONSTER GENERATORS ===
+
+inline std::vector<std::string> gen_128char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) 
+        inputs.push_back("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_lower64(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c('a', 'z');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (int j = 0; j < 64; j++) s += static_cast<char>(c(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_digits100(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c('0', '9');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (int j = 0; j < 100; j++) s += static_cast<char>(c(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_alt_types(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> type(0, 2);
+    std::uniform_int_distribution<int> lower('a', 'z');
+    std::uniform_int_distribution<int> digit('0', '9');
+    std::uniform_int_distribution<int> upper('A', 'Z');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        int t = type(rng);
+        for (int j = 0; j < 10; j++) {
+            if (t == 0) s += static_cast<char>(lower(rng));
+            else if (t == 1) s += static_cast<char>(digit(rng));
+            else s += static_cast<char>(upper(rng));
+        }
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_triple_range(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> lower('a', 'z');
+    std::uniform_int_distribution<int> digit('0', '9');
+    std::uniform_int_distribution<int> upper('A', 'Z');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (int j = 0; j < 20; j++) s += static_cast<char>(lower(rng));
+        for (int j = 0; j < 20; j++) s += static_cast<char>(digit(rng));
+        for (int j = 0; j < 20; j++) s += static_cast<char>(upper(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_12x3(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> choice(0, 11);
+    const char* opts[] = {"abc", "def", "ghi", "jkl", "mno", "pqr", 
+                          "stu", "vwx", "yz0", "123", "456", "789"};
+    for (int i = 0; i < count; i++) inputs.push_back(opts[choice(rng)]);
+    return inputs;
+}
+
+inline std::vector<std::string> gen_alnum50(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(0, 61);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        for (int j = 0; j < 50; j++) {
+            int v = c(rng);
+            if (v < 26) s += static_cast<char>('a' + v);
+            else if (v < 52) s += static_cast<char>('A' + v - 26);
+            else s += static_cast<char>('0' + v - 52);
+        }
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_lit_range_lit_big(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c('a', 'z');
+    for (int i = 0; i < count; i++) {
+        std::string s = "prefix_";
+        for (int j = 0; j < 30; j++) s += static_cast<char>(c(rng));
+        s += "_suffix";
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+// === TRULY MASSIVE GENERATORS ===
+
+inline std::vector<std::string> gen_256char(size_t /*len*/, int count, unsigned int /*seed*/) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    for (int i = 0; i < count; i++) 
+        inputs.push_back("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd");
+    return inputs;
+}
+
+inline std::vector<std::string> gen_lower256(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c('a', 'z');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        s.reserve(256);
+        for (int j = 0; j < 256; j++) s += static_cast<char>(c(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_digits500(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c('0', '9');
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        s.reserve(500);
+        for (int j = 0; j < 500; j++) s += static_cast<char>(c(rng));
+        inputs.push_back(std::move(s));
+    }
+    return inputs;
+}
+
+inline std::vector<std::string> gen_alpha1000(size_t /*len*/, int count, unsigned int seed) {
+    std::vector<std::string> inputs;
+    inputs.reserve(count);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> c(0, 51);
+    for (int i = 0; i < count; i++) {
+        std::string s;
+        s.reserve(1000);
+        for (int j = 0; j < 1000; j++) {
+            int v = c(rng);
+            if (v < 26) s += static_cast<char>('a' + v);
+            else s += static_cast<char>('A' + v - 26);
+        }
         inputs.push_back(std::move(s));
     }
     return inputs;

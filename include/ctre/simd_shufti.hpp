@@ -28,7 +28,7 @@ struct is_sentinel_iterator<ctre::zero_terminated_string_end_iterator> : std::tr
 #ifdef __AVX2__
 inline const unsigned char* find_null_terminator_avx2(const unsigned char* p) {
     __m256i zero = _mm256_setzero_si256();
-    const unsigned char* aligned = reinterpret_cast<const unsigned char*>((reinterpret_cast<uintptr_t>(p) + 31) & ~31);
+    const unsigned char* aligned = reinterpret_cast<const unsigned char*>((reinterpret_cast<uintptr_t>(p) + 31) & ~static_cast<uintptr_t>(31));
     for (const unsigned char* s = p; s < aligned && s < p + 32; ++s)
         if (*s == '\0')
             return s;
@@ -36,7 +36,7 @@ inline const unsigned char* find_null_terminator_avx2(const unsigned char* p) {
         int mask =
             _mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_load_si256(reinterpret_cast<const __m256i*>(s)), zero));
         if (mask != 0)
-            return s + __builtin_ctz(mask);
+            return s + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
     }
 }
 #endif
@@ -169,7 +169,7 @@ struct character_class {
         if (!use_exact_range) {
             int double_hits = 0;
             for (int b = 0; b < 128; ++b) {
-                uint8_t un = (b >> 4) & 0xF, ln = b & 0xF, ln2 = (ln + 7) % 16;
+                uint8_t un = static_cast<uint8_t>((b >> 4) & 0xF), ln = static_cast<uint8_t>(b & 0xF), ln2 = static_cast<uint8_t>((ln + 7) % 16);
                 if ((upper_nibble_table[un] & match_bit) && (lower_nibble_table[ln] & match_bit) &&
                     (upper_nibble_table2[un] & match_bit2) && (lower_nibble_table2[ln2] & match_bit2))
                     ++double_hits;
@@ -189,9 +189,9 @@ struct character_class {
             t = 0;
         for (auto& m : exact_membership)
             m = 0;
-        for (int b = 0; b < 256; ++b) {
-            if (pred(b)) {
-                uint8_t un = (b >> 4) & 0xF, ln = b & 0xF;
+        for (size_t b = 0; b < 256; ++b) {
+            if (pred(static_cast<int>(b))) {
+                size_t un = (b >> 4) & 0xF, ln = b & 0xF;
                 upper_nibble_table[un] |= match_bit;
                 lower_nibble_table[ln] |= match_bit;
                 upper_nibble_table2[un] |= match_bit2;
@@ -225,7 +225,7 @@ namespace exact_range {
 inline bool find_alnum_avx2(const unsigned char* p, const unsigned char* end, const unsigned char*& out) {
     if (p >= end)
         return false;
-    size_t rem = end - p;
+    size_t rem = static_cast<size_t>(end - p);
     auto in_range = [](__m256i x, unsigned lo, unsigned hi) {
         __m256i L = _mm256_set1_epi8(char(lo ^ 0x80)), H = _mm256_set1_epi8(char(hi ^ 0x80));
         return _mm256_and_si256(_mm256_xor_si256(_mm256_cmpgt_epi8(L, x), _mm256_set1_epi8(char(0xFF))),
@@ -239,7 +239,7 @@ inline bool find_alnum_avx2(const unsigned char* p, const unsigned char* end, co
                             _mm256_or_si256(in_range(x, 'a', 'z'), _mm256_cmpeq_epi8(v, _mm256_set1_epi8('_'))));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + __builtin_ctz(mask) + 1;
+            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -259,7 +259,7 @@ inline bool find_alnum_avx2(const unsigned char* p, const unsigned char* end, co
 inline bool find_digits_avx2(const unsigned char* p, const unsigned char* end, const unsigned char*& out) {
     if (p >= end)
         return false;
-    size_t rem = end - p;
+    size_t rem = static_cast<size_t>(end - p);
     while (rem >= 32) {
         __m256i x =
             _mm256_xor_si256(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), _mm256_set1_epi8(char(0x80)));
@@ -268,7 +268,7 @@ inline bool find_digits_avx2(const unsigned char* p, const unsigned char* end, c
                                       _mm256_xor_si256(_mm256_cmpgt_epi8(x, H), _mm256_set1_epi8(char(0xFF))));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + __builtin_ctz(mask) + 1;
+            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -287,7 +287,7 @@ inline bool find_digits_avx2(const unsigned char* p, const unsigned char* end, c
 inline bool find_letters_avx2(const unsigned char* p, const unsigned char* end, const unsigned char*& out) {
     if (p >= end)
         return false;
-    size_t rem = end - p;
+    size_t rem = static_cast<size_t>(end - p);
     auto in_range = [](__m256i x, unsigned lo, unsigned hi) {
         __m256i L = _mm256_set1_epi8(char(lo ^ 0x80)), H = _mm256_set1_epi8(char(hi ^ 0x80));
         return _mm256_and_si256(_mm256_xor_si256(_mm256_cmpgt_epi8(L, x), _mm256_set1_epi8(char(0xFF))),
@@ -299,7 +299,7 @@ inline bool find_letters_avx2(const unsigned char* p, const unsigned char* end, 
         __m256i ok = _mm256_or_si256(in_range(x, 'A', 'Z'), in_range(x, 'a', 'z'));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + __builtin_ctz(mask) + 1;
+            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -319,7 +319,7 @@ inline bool find_letters_avx2(const unsigned char* p, const unsigned char* end, 
 inline bool find_whitespace_avx2(const unsigned char* p, const unsigned char* end, const unsigned char*& out) {
     if (p >= end)
         return false;
-    size_t rem = end - p;
+    size_t rem = static_cast<size_t>(end - p);
     while (rem >= 32) {
         __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(p));
         __m256i ok = _mm256_or_si256(
@@ -330,7 +330,7 @@ inline bool find_whitespace_avx2(const unsigned char* p, const unsigned char* en
                                             _mm256_cmpeq_epi8(v, _mm256_set1_epi8(' ')))));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + __builtin_ctz(mask) + 1;
+            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -353,7 +353,7 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
                                     const unsigned char*& out) {
     if (p >= end)
         return false;
-    size_t rem = end - p;
+    size_t rem = static_cast<size_t>(end - p);
     const __m256i upper_lut =
         _mm256_broadcastsi128_si256(_mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.upper_nibble_table.data())));
     const __m256i lower_lut =
@@ -367,7 +367,7 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
             _mm256_and_si256(_mm256_shuffle_epi8(upper_lut, un), _mm256_shuffle_epi8(lower_lut, ln)));
         if (mask != 0) {
             while (mask != 0) {
-                int i = __builtin_ctz(mask);
+                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -388,7 +388,7 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
             _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.lower_nibble_table.data())), ln)));
         if (mask != 0) {
             while (mask != 0) {
-                int i = __builtin_ctz(mask);
+                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -414,7 +414,7 @@ inline bool shufti_find_avx2_double(const unsigned char* p, const unsigned char*
                                     const unsigned char*& out) {
     if (p >= end)
         return false;
-    size_t rem = end - p;
+    size_t rem = static_cast<size_t>(end - p);
     const __m256i upper_lut =
         _mm256_broadcastsi128_si256(_mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.upper_nibble_table.data())));
     const __m256i lower_lut =
@@ -433,7 +433,7 @@ inline bool shufti_find_avx2_double(const unsigned char* p, const unsigned char*
         int mask = _mm256_movemask_epi8(_mm256_and_si256(c1, c2));
         if (mask != 0) {
             while (mask != 0) {
-                int i = __builtin_ctz(mask);
+                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -467,7 +467,7 @@ inline bool shufti_find_ssse3(const unsigned char* p, const unsigned char* end, 
                               const unsigned char*& out) {
     if (p >= end)
         return false;
-    size_t rem = end - p;
+    size_t rem = static_cast<size_t>(end - p);
     const __m128i upper_lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.upper_nibble_table.data()));
     const __m128i lower_lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.lower_nibble_table.data()));
     const __m128i upper_lut2 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.upper_nibble_table2.data()));
@@ -481,7 +481,7 @@ inline bool shufti_find_ssse3(const unsigned char* p, const unsigned char* end, 
         int mask = _mm_movemask_epi8(_mm_and_si128(c1, c2));
         if (mask != 0) {
             while (mask != 0) {
-                int i = __builtin_ctz(mask);
+                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -659,7 +659,7 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
     if constexpr (std::contiguous_iterator<Iterator>) {
         const unsigned char* p = reinterpret_cast<const unsigned char*>(std::to_address(current));
         const unsigned char* end_ptr = get_end_pointer(current, last);
-        size_t count = 0, rem = end_ptr - p;
+        size_t count = 0, rem = static_cast<size_t>(end_ptr - p);
 
 #if defined(CTRE_ARCH_X86) && (defined(__SSE4_2__) || defined(__SSSE3__) || defined(__SSE2__))
         if (rem >= 16 && rem < 32) {

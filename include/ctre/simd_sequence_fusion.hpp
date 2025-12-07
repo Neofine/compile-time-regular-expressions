@@ -92,14 +92,14 @@ struct segment_info<repeat<A, B, set<Elements...>>> {
         __m128i le = _mm_cmpgt_epi8(_mm_add_epi8(hi, _mm_set1_epi8(1)), input);
         result = _mm_or_si128(result, _mm_and_si128(ge, le));
     }
-    return (_mm_movemask_epi8(result) & mask) == mask;
+    return (static_cast<uint32_t>(_mm_movemask_epi8(result)) & mask) == mask;
 }
 
 [[gnu::always_inline]] inline bool check_literals_simd(const char* data, uint32_t mask, const char* expected) {
     if (mask == 0) return true;
     __m128i input = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
     __m128i exp = _mm_loadu_si128(reinterpret_cast<const __m128i*>(expected));
-    return (_mm_movemask_epi8(_mm_cmpeq_epi8(input, exp)) & mask) == mask;
+    return (static_cast<uint32_t>(_mm_movemask_epi8(_mm_cmpeq_epi8(input, exp))) & mask) == mask;
 }
 
 // Variant structures

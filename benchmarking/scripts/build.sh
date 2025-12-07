@@ -19,10 +19,9 @@ echo "Building CTRE-SIMD (full SIMD)..."
 $CXX $BASE_CXXFLAGS -march=native -I$PROJECT_ROOT/include \
     "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_simd" $LDFLAGS
 
-echo "Building CTRE-Scalar (SIMD code but scalar fallback only)..."
-$CXX $BASE_CXXFLAGS -mno-avx2 -mno-avx -msse4.2 -I$PROJECT_ROOT/include -DCTRE_ENGINE_NAME='"CTRE-Scalar"' \
-    "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_scalar" $LDFLAGS 2>/dev/null || \
-$CXX $BASE_CXXFLAGS -I$PROJECT_ROOT/include -DCTRE_DISABLE_SIMD -DCTRE_ENGINE_NAME='"CTRE-Scalar"' \
+echo "Building CTRE-Scalar (your code with SIMD macro disabled, but with -march=native)..."
+# Use -march=native but with CTRE_DISABLE_SIMD to test scalar code paths
+$CXX $BASE_CXXFLAGS -march=native -DCTRE_DISABLE_SIMD -I$PROJECT_ROOT/include -DCTRE_ENGINE_NAME='"CTRE-Scalar"' \
     "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_scalar" $LDFLAGS
 
 echo "Building CTRE-Original (upstream CTRE, no modifications)..."

@@ -53,7 +53,7 @@ struct StateMask128 {
     constexpr uint64_t get_low() const {
 #ifdef CTRE_ARCH_X86
         #if defined(__GNUC__) || defined(__clang__)
-        return ((__v2di)bits)[0];
+        return static_cast<uint64_t>(((__v2di)bits)[0]);
         #else
         return 0; // Fallback
         #endif
@@ -65,7 +65,7 @@ struct StateMask128 {
     constexpr uint64_t get_high() const {
 #ifdef CTRE_ARCH_X86
         #if defined(__GNUC__) || defined(__clang__)
-        return ((__v2di)bits)[1];
+        return static_cast<uint64_t>(((__v2di)bits)[1]);
         #else
         return 0; // Fallback
         #endif
@@ -193,14 +193,14 @@ struct StateMask128 {
         const int shift = static_cast<int>(shift_amount);
         if (shift_amount < 64) {
             __m128i shifted = _mm_slli_epi64(bits, shift);
-            uint64_t low = _mm_extract_epi64(bits, 0);
+            uint64_t low = static_cast<uint64_t>(_mm_extract_epi64(bits, 0));
             uint64_t carry = low >> (64 - shift_amount);
-            uint64_t high = _mm_extract_epi64(shifted, 1);
-            shifted = _mm_insert_epi64(shifted, high | carry, 1);
+            uint64_t high = static_cast<uint64_t>(_mm_extract_epi64(shifted, 1));
+            shifted = _mm_insert_epi64(shifted, static_cast<long long>(high | carry), 1);
             return StateMask128(shifted);
         } else {
-            uint64_t low = _mm_extract_epi64(bits, 0);
-            return StateMask128(_mm_insert_epi64(_mm_setzero_si128(), low << (shift_amount - 64), 1));
+            uint64_t low = static_cast<uint64_t>(_mm_extract_epi64(bits, 0));
+            return StateMask128(_mm_insert_epi64(_mm_setzero_si128(), static_cast<long long>(low << (shift_amount - 64)), 1));
         }
 #else
         // Use the constexpr implementation
@@ -220,7 +220,7 @@ struct StateMask128 {
 
     // Count set bits (constexpr-friendly using builtin)
     constexpr size_t count() const {
-        return __builtin_popcountll(get_low()) + __builtin_popcountll(get_high());
+        return static_cast<size_t>(__builtin_popcountll(get_low())) + static_cast<size_t>(__builtin_popcountll(get_high()));
     }
 };
 

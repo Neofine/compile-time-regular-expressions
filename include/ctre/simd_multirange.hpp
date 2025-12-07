@@ -107,9 +107,9 @@ template <typename PatternType, size_t... Is, typename Iterator, typename EndIte
             current += 16;
             count += 16;
         } else {
-            int m = __builtin_ctz(~mask & 0xFFFF);
+            auto m = __builtin_ctz(static_cast<unsigned>(~mask) & 0xFFFFU);
             current += m;
-            count += m;
+            count += static_cast<size_t>(m);
             break;
         }
     }
@@ -140,9 +140,9 @@ template <typename PatternType, size_t... Is, typename Iterator, typename EndIte
             current += 32;
             count += 32;
         } else {
-            int m = __builtin_ctz(~static_cast<unsigned>(mask));
+            auto m = __builtin_ctz(~static_cast<unsigned>(mask));
             current += m;
-            count += m;
+            count += static_cast<size_t>(m);
             break;
         }
     }
