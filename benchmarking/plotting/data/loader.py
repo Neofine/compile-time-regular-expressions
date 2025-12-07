@@ -64,13 +64,27 @@ class BenchmarkData:
 # ============================================================================
 
 def load_csv(path: Path) -> Optional[pd.DataFrame]:
-    """Load and validate a benchmark CSV file."""
+    """Load and validate a benchmark CSV file.
+    
+    Supports both standard format (Time_ns) and statistical format (Time_ns, Time_std, Time_min, Time_max).
+    """
     if not path.exists():
         logger.warning(f"File not found: {path}")
         return None
 
     try:
-        df = pd.read_csv(path)
+        # Read raw file to find actual CSV header (skip non-CSV lines like "Running category:")
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        
+        # Find the header line (should contain "Pattern,Engine,Input_Size,Time_ns")
+        skip_rows = 0
+        for i, line in enumerate(lines):
+            if line.strip().startswith('Pattern,'):
+                skip_rows = i
+                break
+        
+        df = pd.read_csv(path, skiprows=skip_rows)
 
         # Validate required columns
         required_cols = ['Pattern', 'Engine', 'Input_Size', 'Time_ns']
@@ -82,6 +96,20 @@ def load_csv(path: Path) -> Optional[pd.DataFrame]:
         # Convert types
         df['Input_Size'] = pd.to_numeric(df['Input_Size'], errors='coerce')
         df['Time_ns'] = pd.to_numeric(df['Time_ns'], errors='coerce')
+        
+        # Handle statistical columns if present
+        if 'Time_std' in df.columns:
+            df['Time_std'] = pd.to_numeric(df['Time_std'], errors='coerce')
+        if 'Time_min' in df.columns:
+            df['Time_min'] = pd.to_numeric(df['Time_min'], errors='coerce')
+        if 'Time_max' in df.columns:
+            df['Time_max'] = pd.to_numeric(df['Time_max'], errors='coerce')
+        if 'Time_median' in df.columns:
+            df['Time_median'] = pd.to_numeric(df['Time_median'], errors='coerce')
+        if 'Time_ci_lower' in df.columns:
+            df['Time_ci_lower'] = pd.to_numeric(df['Time_ci_lower'], errors='coerce')
+        if 'Time_ci_upper' in df.columns:
+            df['Time_ci_upper'] = pd.to_numeric(df['Time_ci_upper'], errors='coerce')
 
         # Filter invalid rows
         df = df.dropna(subset=['Input_Size', 'Time_ns'])
@@ -143,20 +171,7 @@ def load_benchmark_results(
     Returns:
         BenchmarkData object or None if loading fails
     """
-    # Try root-level files first (new structure: output/simd.csv, output/baseline.csv)
-    simd_path = base_dir / simd_file
-    baseline_path = base_dir / baseline_file
-    if simd_path.exists() or baseline_path.exists():
-        df = merge_simd_baseline(simd_path, baseline_path)
-        if df is not None:
-            source_files = [p for p in [simd_path, baseline_path] if p.exists()]
-            return BenchmarkData(
-                df=df,
-                category=category,
-                source_files=source_files
-            )
-
-    # Try category subdirectory
+    # Try category subdirectory first (prefer category-specific files)
     cat_dir = base_dir / category
     
     # For arm_nomatch, data is in the arm/ folder with arm_nomatch/ pattern prefix
@@ -190,6 +205,19 @@ def load_benchmark_results(
                     category=category,
                     source_files=existing_files
                 )
+
+    # Fall back to root-level merged files (for overview/legacy support)
+    simd_path = base_dir / simd_file
+    baseline_path = base_dir / baseline_file
+    if simd_path.exists() or baseline_path.exists():
+        df = merge_simd_baseline(simd_path, baseline_path)
+        if df is not None:
+            source_files = [p for p in [simd_path, baseline_path] if p.exists()]
+            return BenchmarkData(
+                df=df,
+                category=category,
+                source_files=source_files
+            )
 
     # Fall back to results.csv in base_dir
     results_path = base_dir / 'results.csv'

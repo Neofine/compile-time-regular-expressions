@@ -30,7 +30,9 @@ mtent12.txt
 
 # Generated output (regeneratable)
 benchmarking/build/
-benchmarking/output/
+# benchmarking/output/ - commented out to allow tracking CSV files and plots
+# Only ignore temporary files in output, not the actual results
+benchmarking/output/*_runs_*.csv
 results/
 
 # Benchmark binaries

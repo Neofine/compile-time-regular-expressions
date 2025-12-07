@@ -10,8 +10,16 @@ LIB_DIR="$PLOTS_DIR/lib"
 ORIG_CTRE="$LIB_DIR/ctre_original/include"
 
 CXX="${CXX:-g++}"
-BASE_CXXFLAGS="-std=c++20 -O3 -I$SRC_DIR -I$LIB_DIR/include"
-LDFLAGS="-L$LIB_DIR/lib -lre2 -lpcre2-8 -lhs -Wl,-rpath,$LIB_DIR/lib"
+# Use system libraries via pkg-config if available, otherwise fall back to local lib/
+if pkg-config --exists re2 libpcre2-8 libhs 2>/dev/null; then
+    PKG_CFLAGS=$(pkg-config --cflags re2 libpcre2-8 libhs)
+    PKG_LIBS=$(pkg-config --libs re2 libpcre2-8 libhs)
+    BASE_CXXFLAGS="-std=c++20 -O3 -I$SRC_DIR $PKG_CFLAGS"
+    LDFLAGS="$PKG_LIBS"
+else
+    BASE_CXXFLAGS="-std=c++20 -O3 -I$SRC_DIR -I$LIB_DIR/include"
+    LDFLAGS="-L$LIB_DIR/lib -lre2 -lpcre2-8 -lhs -Wl,-rpath,$LIB_DIR/lib"
+fi
 
 mkdir -p "$BUILD_DIR"
 

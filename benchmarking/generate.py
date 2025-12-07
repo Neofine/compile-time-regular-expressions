@@ -29,7 +29,8 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR / 'plotting'))
 
 from plotting.config import setup_style, ENGINE_ORDER, format_size, get_pattern_label
-from plotting.data import load_benchmark_results, load_compile_overhead, load_compile_time, merge_simd_baseline
+from plotting.data import load_benchmark_results, load_compile_overhead, load_compile_time, merge_simd_baseline, load_csv
+import pandas as pd
 from plotting.figures import (
     TimeSeriesPlot,
     SpeedupPlot,
@@ -924,8 +925,44 @@ def main():
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _ensure_merged_data():
+        """Ensure merged simd.csv and baseline.csv exist for overview generation."""
+        simd_path = args.data_dir / 'simd.csv'
+        baseline_path = args.data_dir / 'baseline.csv'
+        
+        if not simd_path.exists() or not baseline_path.exists():
+            # Merge data from simple and complex categories
+            simd_files = [args.data_dir / 'simple' / 'simd.csv', args.data_dir / 'complex' / 'simd.csv']
+            baseline_files = [args.data_dir / 'simple' / 'original.csv', args.data_dir / 'complex' / 'original.csv']
+            
+            simd_dfs = []
+            baseline_dfs = []
+            
+            for f in simd_files:
+                if f.exists():
+                    df = load_csv(f)
+                    if df is not None:
+                        simd_dfs.append(df)
+            
+            for f in baseline_files:
+                if f.exists():
+                    df = load_csv(f)
+                    if df is not None:
+                        baseline_dfs.append(df)
+            
+            if simd_dfs:
+                merged_simd = pd.concat(simd_dfs, ignore_index=True)
+                merged_simd.to_csv(simd_path, index=False)
+                logger.info(f"Created merged {simd_path.name}: {len(merged_simd)} rows")
+            
+            if baseline_dfs:
+                merged_baseline = pd.concat(baseline_dfs, ignore_index=True)
+                merged_baseline.to_csv(baseline_path, index=False)
+                logger.info(f"Created merged {baseline_path.name}: {len(merged_baseline)} rows")
+
     if args.delta:
         # Generate SIMD delta chart for simple + complex
+        _ensure_merged_data()
         data = merge_simd_baseline(args.data_dir / 'simd.csv', args.data_dir / 'baseline.csv')
         delta_dir = args.output_dir / 'overview'
         delta_dir.mkdir(parents=True, exist_ok=True)
@@ -937,6 +974,7 @@ def main():
         generate_codesize(args.data_dir, args.output_dir)
         generate_compile_time(args.data_dir, args.output_dir)
         # Also generate delta chart
+        _ensure_merged_data()
         data = merge_simd_baseline(args.data_dir / 'simd.csv', args.data_dir / 'baseline.csv')
         delta_dir = args.output_dir / 'overview'
         delta_dir.mkdir(parents=True, exist_ok=True)
