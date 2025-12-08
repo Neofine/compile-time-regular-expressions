@@ -2,18 +2,6 @@
 
 SIMD extensions to [CTRE](https://github.com/hanickadot/compile-time-regular-expressions) (Compile-Time Regular Expressions).
 
-## What Was Modified
-
-This implementation adds ~6,500 lines to the original CTRE library:
-
-| Component | Files | Lines | Purpose |
-|-----------|-------|-------|---------|
-| SIMD matching | `simd_*.hpp` (8 files) | ~3,300 | Vectorized character class matching |
-| Pattern analysis | 5 files | ~1,700 | NFA construction, literal extraction |
-| BitNFA engine | `bitnfa/` (12 files) | ~1,500 | Parallel state simulation |
-
-**Original CTRE files are unmodified** except for dispatch logic in `evaluation.hpp` (~20 lines) and `wrapper.hpp` (~15 lines).
-
 ## File Overview
 
 ### SIMD Matching (`include/ctre/`)
@@ -61,34 +49,51 @@ wrapper.hpp       - BitNFA dispatch for alternations (lines 87-100, 160-175)
 ## Running Benchmarks
 
 ```bash
-# Quick test (~2 min) - compares SIMD vs scalar for 37 patterns
-./run_individual_benchmarks.sh
-
-# Full suite (~5 min) - generates CSV data and PNG plots
-./benchmarking/scripts/generate_all.sh
+# Full suite - builds, runs all benchmarks, generates plots
+cd benchmarking && bash scripts/bench_all.sh
 
 # Individual steps:
-./benchmarking/scripts/build.sh              # Compile binaries
-./benchmarking/scripts/run_benchmarks.sh     # Run benchmarks → CSV
-./benchmarking/scripts/measure_codesize.sh   # Measure binary size
-./benchmarking/scripts/measure_compile_time.sh  # Measure compile time
-python3 benchmarking/generate.py             # Generate plots
+bash scripts/build.sh           # Build benchmark executables
+bash scripts/run.sh             # Run runtime benchmarks → CSV
+bash scripts/compile_time.sh    # Measure compile time
+bash scripts/codesize.sh        # Measure binary sizes
+python3 generate.py             # Generate all plots
 
-# Cleanup all generated files
-./cleanup.sh
+# Publication-quality benchmarks (requires root for CPU isolation)
+sudo bash scripts/setup.sh      # Configure system (disable turbo, set governor)
+BENCHMARK_RUNS=10 bash scripts/run.sh
+sudo bash scripts/restore.sh    # Restore system settings
 ```
+
+## Benchmark Categories
+
+| Category | Description |
+|----------|-------------|
+| `simple` | Single character classes: `[0-9]+`, `[a-z]+` |
+| `complex` | Combined patterns: `[a-z]+[0-9]+`, decimals |
+| `realworld` | Validation: IPv4, UUID, email, dates |
+| `nomatch` | Non-matching input rejection |
+| `fallback` | Patterns requiring scalar fallback |
+| `small` | Small inputs (1-16 bytes) |
+| `large` | Large inputs (32KB-8MB) |
+| `adversarial` | SIMD-unfavorable patterns |
 
 ## Output Structure
 
 ```
 benchmarking/output/
-├── simple/simd.csv, baseline.csv
-├── complex/simd.csv, baseline.csv
-├── scaling/simd.csv, baseline.csv
-├── realworld/simd.csv, baseline.csv
+├── simple/simd.csv, scalar.csv, original.csv
+├── complex/...
+├── realworld/...
+├── nomatch/...
 ├── codesize.csv
 ├── compile_time.csv
-└── figures/*.png
+└── figures/
+    ├── simple/heatmap.png, *_time.png
+    ├── complex/...
+    ├── overview/simd_delta_by_size.png
+    ├── compile_time/compile_time_by_category.png
+    └── statistical/cv_histogram.png
 ```
 
 ## Tests
@@ -106,6 +111,7 @@ Relevant test files:
 
 ## Build Requirements
 
-- GCC 10+ or Clang 12+ with C++20 support
-- x86-64 with AVX2 (for SIMD paths)
-- Python 3.8+, matplotlib, pandas, seaborn (for plotting only)
+- GCC 11+ or Clang 14+ with C++20 support
+- x86-64 with AVX2 (for SIMD paths; SSE4.2 fallback available)
+- RE2, PCRE2, Hyperscan libraries (for comparative benchmarks)
+- Python 3.8+, matplotlib, pandas, seaborn, numpy (for plotting)

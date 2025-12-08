@@ -1,39 +1,29 @@
 #!/bin/bash
-set -e
+# Build benchmark executables
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLOTS_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(dirname "$PLOTS_DIR")"
-BUILD_DIR="$PLOTS_DIR/build"
-SRC_DIR="$PLOTS_DIR/benchmarks"
-LIB_DIR="$PLOTS_DIR/lib"
-ORIG_CTRE="$LIB_DIR/ctre_original/include"
+source "$(dirname "$0")/common.sh"
 
 CXX="${CXX:-g++}"
-# Use system libraries via pkg-config if available, otherwise fall back to local lib/
+SRC="$BENCH_DIR/src/benchmark.cpp"
+
 if pkg-config --exists re2 libpcre2-8 libhs 2>/dev/null; then
-    PKG_CFLAGS=$(pkg-config --cflags re2 libpcre2-8 libhs)
-    PKG_LIBS=$(pkg-config --libs re2 libpcre2-8 libhs)
-    BASE_CXXFLAGS="-std=c++20 -O3 -I$SRC_DIR $PKG_CFLAGS"
-    LDFLAGS="$PKG_LIBS"
+    CFLAGS="-std=c++20 -O3 $(pkg-config --cflags re2 libpcre2-8 libhs)"
+    LIBS="$(pkg-config --libs re2 libpcre2-8 libhs)"
 else
-    BASE_CXXFLAGS="-std=c++20 -O3 -I$SRC_DIR -I$LIB_DIR/include"
-    LDFLAGS="-L$LIB_DIR/lib -lre2 -lpcre2-8 -lhs -Wl,-rpath,$LIB_DIR/lib"
+    CFLAGS="-std=c++20 -O3 -I$LIB_DIR/include"
+    LIBS="-L$LIB_DIR/lib -lre2 -lpcre2-8 -lhs -Wl,-rpath,$LIB_DIR/lib"
 fi
 
 mkdir -p "$BUILD_DIR"
 
-echo "Building CTRE-SIMD (full SIMD)..."
-$CXX $BASE_CXXFLAGS -march=native -I$PROJECT_ROOT/include \
-    "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_simd" $LDFLAGS
+log "Building CTRE-SIMD"
+$CXX $CFLAGS -march=native -I"$PROJECT_ROOT/include" "$SRC" -o "$BUILD_DIR/bench_simd" $LIBS
 
-echo "Building CTRE-Scalar (your code with SIMD macro disabled, but with -march=native)..."
-# Use -march=native but with CTRE_DISABLE_SIMD to test scalar code paths
-$CXX $BASE_CXXFLAGS -march=native -DCTRE_DISABLE_SIMD -I$PROJECT_ROOT/include -DCTRE_ENGINE_NAME='"CTRE-Scalar"' \
-    "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_scalar" $LDFLAGS
+log "Building CTRE-Scalar"
+$CXX $CFLAGS -march=native -DCTRE_DISABLE_SIMD -I"$PROJECT_ROOT/include" -DCTRE_ENGINE_NAME='"CTRE-Scalar"' "$SRC" -o "$BUILD_DIR/bench_scalar" $LIBS
 
-echo "Building CTRE-Original (upstream CTRE, no modifications)..."
-$CXX $BASE_CXXFLAGS -march=native -I$ORIG_CTRE -DCTRE_ENGINE_NAME='"CTRE"' \
-    "$SRC_DIR/thesis_benchmark.cpp" -o "$BUILD_DIR/bench_original" $LDFLAGS
+log "Building CTRE-Original"
+$CXX $CFLAGS -march=native -I"$LIB_DIR/ctre_original/include" -DCTRE_ENGINE_NAME='"CTRE"' "$SRC" -o "$BUILD_DIR/bench_original" $LIBS
 
-ls -la "$BUILD_DIR"/bench_*
+log "Built:"
+ls -lh "$BUILD_DIR"/bench_*
