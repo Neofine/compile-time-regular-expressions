@@ -249,10 +249,8 @@ inline auto extract_literal_with_fallback() {
         return path_result;  // Path analysis succeeded!
     }
 
-    // Step 2: Fallback to dominant region analysis (covers remaining 2-3%)
-    // Requires region_analysis.hpp to be included
-    // This will be called from decomposition.hpp
-    return literal_result<64>{};  // Placeholder
+    // Step 2: Region fallback handled in decomposition.hpp (avoids circular dependency)
+    return literal_result<64>{};
 }
 
 } // namespace dominators

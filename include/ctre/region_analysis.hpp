@@ -443,7 +443,7 @@ constexpr auto extract_string_from_path(const NFA& nfa,
         result.chars[result.length++] = nfa.states[path[i]].symbol;
     }
 
-    // Only accept strings of reasonable length (≥2 chars)
+    // Only accept strings of reasonable length (>=2 chars)
     if (result.length >= 2) {
         result.has_literal = true;
     } else {
@@ -497,7 +497,7 @@ constexpr auto extract_string_backward(const NFA& nfa, size_t accept_state) {
     }
     result.length = char_count;
 
-    // Only accept strings of reasonable length (≥2 chars)
+    // Only accept strings of reasonable length (>=2 chars)
     if (result.length >= 2) {
         result.has_literal = true;
     }

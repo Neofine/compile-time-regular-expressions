@@ -391,8 +391,6 @@ template <typename R, typename BeginIterator, typename Iterator, typename EndIte
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator current, const EndIterator last,
                                        [[maybe_unused]] const flags& f, R captures,
                                        ctll::list<lazy_repeat<A, B, Content...>, Tail...>) noexcept {
-    // Debug: lazy_repeat function called
-
     if constexpr (B != 0 && A > B) {
         return not_matched;
     } else {
@@ -487,7 +485,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 
     // EARLY REJECTION: Check first char BEFORE any SIMD setup (outside SIMD block!)
     // For non-matching inputs (e.g., [0-9]+ on letters), reject in ~1ns vs ~15ns
-    // This is the PREFILTER stage described in thesis - fast-fail before expensive evaluation
+    // Prefilter stage - fast-fail before expensive evaluation
     if constexpr (sizeof...(Content) == 1) {
         using ContentType = std::tuple_element_t<0, std::tuple<Content...>>;
         if constexpr (requires { simd::simd_pattern_trait<ContentType>::min_char; }) {
@@ -507,7 +505,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
     }
 
     // SIMD optimization for possessive repetition patterns at runtime (invisible to user)
-    // for performance. Extracting to helper causes 70% regression (1.82x → 1.07x) due to
+    // for performance. Extracting to helper causes 70% regression (1.82x -> 1.07x) due to
     // template instantiation preventing compile-time optimization. If modifying, update BOTH!
     if constexpr (sizeof...(Content) == 1) {
         if (!std::is_constant_evaluated() && simd::can_use_simd()) {
@@ -785,7 +783,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
     }
 
     // SIMD optimization for repetition patterns at runtime (invisible to user)
-    // for performance. Extracting to helper causes 70% regression (1.82x → 1.07x) due to
+    // for performance. Extracting to helper causes 70% regression (1.82x -> 1.07x) due to
     // template instantiation preventing compile-time optimization. If modifying, update BOTH!
     if constexpr (sizeof...(Content) == 1) {
         if (!std::is_constant_evaluated() && simd::can_use_simd()) {

@@ -34,3 +34,6 @@ benchmarking/build/
 # Benchmark binaries
 bench_simd
 bench_baseline
+
+*.png
+*.csv

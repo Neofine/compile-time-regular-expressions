@@ -4,7 +4,7 @@
 #include "state_mask.hpp"
 #include <array>
 
-// Shift masks for transitions with span ≤ 7 (Hyperscan Algorithm 2)
+// Shift masks for transitions with span <= 7 (Hyperscan Algorithm 2)
 
 namespace ctre::bitnfa {
 

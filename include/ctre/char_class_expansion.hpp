@@ -14,7 +14,7 @@ template <typename... Content> struct set;
 template <auto... Cs> struct enumeration;
 template <typename... Content> struct negative_set;
 
-inline constexpr size_t MAX_CHAR_CLASS_EXPANSION = 11; // Hyperscan paper: ≤11 strings
+inline constexpr size_t MAX_CHAR_CLASS_EXPANSION = 11; // Hyperscan paper: <=11 strings
 
 template <size_t MaxChars>
 struct char_class_expansion_result {

@@ -84,7 +84,7 @@ struct match_method {
                                                  RE) noexcept {
         using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-        // BitNFA dispatch for alternation patterns (experimental)
+        // BitNFA dispatch for alternation patterns
         // BitNFA wins 15-39% for alternations at ALL input sizes
         if constexpr (glushkov::is_select_v<RE> && std::is_pointer_v<IteratorBegin> &&
                       std::is_same_v<IteratorEnd, const char*>) {
@@ -157,7 +157,7 @@ struct search_method {
                                                  RE) noexcept {
         using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-        // BitNFA dispatch for alternation patterns (experimental)
+        // BitNFA dispatch for alternation patterns
         if constexpr (glushkov::is_select_v<RE> && std::is_pointer_v<IteratorBegin> &&
                       std::is_same_v<IteratorEnd, const char*>) {
             if (!std::is_constant_evaluated()) {
