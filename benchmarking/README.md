@@ -6,8 +6,32 @@ Compare CTRE-SIMD against CTRE (original), CTRE-Scalar, RE2, PCRE2, Hyperscan, a
 
 ```bash
 sudo apt install libre2-dev libpcre2-dev libhyperscan-dev
-pip install pandas matplotlib numpy  # For analysis
+pip install -r requirements.txt   # pandas, matplotlib, numpy, seaborn
 ```
+
+Plots use a built-in blog-style (clean spines, light gray plot area, 300 DPI).
+
+### Alternative: Plotly (different look)
+
+For a different visual style (web-style, rounded bars, soft grid), use the Plotly backend:
+
+```bash
+pip install plotly kaleido pandas
+python3 analyze_plotly.py results.csv -o plots_plotly
+```
+
+Same CSV and same chart types; output goes to `plots_plotly/` so you can compare with `plots/`.
+
+### Other Python viz options
+
+| Library | Best for | Look |
+|--------|----------|------|
+| **Plotly** | Interactive + static PNG (Kaleido) | Polished web-style, rounded, distinct |
+| **Altair** | Declarative, Jupyter, save PNG (vl-convert) | Clean, minimal, Vega-Lite |
+| **ProPlot** | Same code as matplotlib, nicer defaults | Drop-in; better colors/layout/fonts |
+| **Lets-Plot** | Grammar-of-graphics (ggplot2-style) | Themes (e.g. high-contrast), different palette |
+
+If you want “not ordinary” without changing code, try **ProPlot** (`pip install proplot` then `import proplot as pplt` and use `pplt.subplots()` instead of `plt.subplots()`). For a clearly different look from matplotlib, use **analyze_plotly.py** or explore **Altair** for a more minimal style.
 
 ## Usage
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Analyze benchmark CSV results and generate publication-quality plots."""
+"""Analyze benchmark CSV results and generate blog-quality plots.
+
+Styled for readability and a polished blog look (not paper/journal).
+"""
 
 import argparse
 import sys
@@ -11,61 +14,108 @@ try:
     import matplotlib as mpl
     import numpy as np
     import seaborn as sns
+    from matplotlib.patches import FancyBboxPatch
 except ImportError:
     print("Install: pip install pandas matplotlib numpy seaborn")
     sys.exit(1)
 
-# Consistent engine ordering and colors
+# Engine order and palette — modern, distinct, blog-friendly (not default academic)
 ENGINES = ['CTRE-SIMD', 'CTRE-Scalar', 'CTRE', 'RE2', 'PCRE2', 'Hyperscan', 'std::regex']
 ENGINE_COLORS = {
-    'CTRE-SIMD': '#2166ac',
-    'CTRE-Scalar': '#67a9cf',
-    'CTRE': '#d1e5f0',
-    'RE2': '#d6604d',
-    'PCRE2': '#8073ac',
-    'Hyperscan': '#f4a582',
-    'std::regex': '#666666',
+    'CTRE-SIMD': '#0ea5e9',   # sky-500 (hero)
+    'CTRE-Scalar': '#38bdf8', # sky-400
+    'CTRE': '#7dd3fc',        # sky-300
+    'RE2': '#f43f5e',         # rose-500
+    'PCRE2': '#a78bfa',       # violet-400
+    'Hyperscan': '#fbbf24',   # amber-400
+    'std::regex': '#94a3b8',  # slate-400
 }
 
-# Plot parameters (matching tmp2.py style)
+# Plot parameters
 PLOT_PARAMS = {
     'bar_width': 0.15,
     'bar_edge_color': 'white',
-    'bar_edge_width': 0.5,
-    'heatmap_linewidth': 2,
+    'bar_edge_width': 0.8,
+    'bar_rounding_size': 0.02,
+    'heatmap_linewidth': 1.5,
     'heatmap_linecolor': 'white',
     'save_dpi': 300,
+    # Visible: plot area as a light "card" so the chart reads as a defined block
+    'axes_facecolor': '#f1f5f9',
+    'figure_facecolor': 'white',
 }
 
+def _round_bar_patches(ax):
+    """Replace rectangular bar patches with rounded-top boxes for a softer look."""
+    rounding = PLOT_PARAMS.get('bar_rounding_size', 0.02)
+    new_patches = []
+    for patch in reversed(ax.patches):
+        bb = patch.get_bbox()
+        w, h = abs(bb.width), abs(bb.height)
+        if w < 1e-6 or h < 1e-6:
+            continue
+        fc = patch.get_facecolor()
+        ec = patch.get_edgecolor()
+        lw = patch.get_linewidth()
+        z = patch.get_zorder()
+        r = FancyBboxPatch(
+            (bb.xmin, bb.ymin), w, h,
+            boxstyle=f"round,pad=0,rounding_size={rounding}",
+            facecolor=fc, edgecolor=ec, linewidth=lw, zorder=z,
+            transform=ax.transData,
+        )
+        patch.remove()
+        new_patches.append(r)
+    for p in new_patches:
+        ax.add_patch(p)
+
 def setup_style():
-    """Configure matplotlib for publication-quality figures."""
+    """Blog-style: clean spines, light plot-area background so the chart reads as a card."""
     plt.style.use('seaborn-v0_8-whitegrid')
     mpl.rcParams.update({
         'font.family': 'sans-serif',
-        'font.size': 10,
-        'axes.titlesize': 12,
+        'font.sans-serif': ['DejaVu Sans', 'Liberation Sans', 'Arial', 'sans-serif'],
+        'font.size': 11,
+        'axes.titlesize': 14,
         'axes.titleweight': 'bold',
-        'axes.labelsize': 10,
-        'xtick.labelsize': 9,
-        'ytick.labelsize': 9,
+        'axes.labelsize': 11,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10,
         'legend.fontsize': 9,
-        'figure.dpi': 150,
-        'savefig.dpi': 150,
+        'figure.dpi': 100,
+        'figure.facecolor': PLOT_PARAMS['figure_facecolor'],
+        'axes.facecolor': PLOT_PARAMS['axes_facecolor'],
+        'savefig.dpi': PLOT_PARAMS['save_dpi'],
         'savefig.bbox': 'tight',
         'savefig.facecolor': 'white',
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'axes.linewidth': 1.0,
+        'axes.edgecolor': '#334155',
+        'axes.grid': True,
+        'axes.axisbelow': True,
+        'grid.alpha': 0.35,
+        'grid.color': '#cbd5e1',
+        'legend.frameon': True,
+        'legend.framealpha': 0.98,
+        'legend.edgecolor': '#e2e8f0',
+        'xtick.major.size': 5,
+        'ytick.major.size': 5,
+        'xtick.minor.visible': False,
+        'ytick.minor.visible': False,
     })
 
 def get_heatmap_cmap():
-    """Diverging colormap: dark red (slow) -> yellow (1x) -> dark green (fast)."""
+    """Diverging: slow (rose/red) -> 1x (neutral) -> fast (emerald). Blog-friendly."""
     from matplotlib.colors import LinearSegmentedColormap
     colors = [
-        '#8b0000',  # 0.0 - dark red (very slow)
-        '#d73027',  # 0.2 - red
-        '#fc8d59',  # 0.4 - orange
-        '#fee08b',  # 0.5 - yellow (1x, neutral)
-        '#d9ef8b',  # 0.6 - yellow-green
-        '#66bd63',  # 0.8 - green
-        '#1a9850',  # 1.0 - dark green (very fast)
+        '#be123c',  # rose-700
+        '#e11d48',  # rose-600
+        '#fb7185',  # rose-400
+        '#fde68a',  # amber-200 (neutral)
+        '#86efac',  # green-300
+        '#22c55e',  # green-500
+        '#15803d',  # green-700
     ]
     positions = [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]
     return LinearSegmentedColormap.from_list('speedup', list(zip(positions, colors)))
@@ -211,23 +261,21 @@ def plot_comparison(df, output_path, size=None):
     fig, ax = plt.subplots(figsize=(12, 6))
     x = np.arange(len(patterns))
     width = PLOT_PARAMS['bar_width']
-    
     for i, engine in enumerate(engines):
         times = [get_time(df_size, p, engine, size) or 0 for p in patterns]
         ax.bar(x + (i - len(engines) / 2 + 0.5) * width, times, width,
-               label=engine, color=ENGINE_COLORS.get(engine, '#333'),
+               label=engine, color=ENGINE_COLORS.get(engine, '#64748b'),
                edgecolor=PLOT_PARAMS['bar_edge_color'],
                linewidth=PLOT_PARAMS['bar_edge_width'], zorder=3)
-    
+    _round_bar_patches(ax)
     ax.set_xlabel('Pattern')
     ax.set_ylabel('Matching Time (ns)')
     ax.set_title(f'Performance Comparison ({format_size(size)} input)')
     ax.set_xticks(x)
     ax.set_xticklabels([get_pattern_label(p) for p in patterns], rotation=30, ha='right')
     ax.set_yscale('log')
-    ax.legend(loc='upper right', fontsize=8)
+    ax.legend(loc='upper right', fontsize=9, framealpha=0.98, edgecolor='#e2e8f0')
     ax.set_axisbelow(True)
-    
     plt.tight_layout()
     fig.savefig(output_path, dpi=PLOT_PARAMS['save_dpi'], bbox_inches='tight', facecolor='white')
     plt.close(fig)
@@ -247,7 +295,6 @@ def plot_speedup(df, output_path, size=None):
     fig, ax = plt.subplots(figsize=(12, 6))
     x = np.arange(len(patterns))
     width = PLOT_PARAMS['bar_width']
-    
     for i, engine in enumerate(engines):
         speedups = []
         for p in patterns:
@@ -255,38 +302,39 @@ def plot_speedup(df, output_path, size=None):
             other = get_time(df, p, engine, size)
             speedups.append(other / simd if simd and other and simd > 0 else 0)
         ax.bar(x + (i - len(engines) / 2 + 0.5) * width, speedups, width,
-               label=engine, color=ENGINE_COLORS.get(engine, '#333'),
+               label=engine, color=ENGINE_COLORS.get(engine, '#64748b'),
                edgecolor=PLOT_PARAMS['bar_edge_color'],
                linewidth=PLOT_PARAMS['bar_edge_width'], zorder=3)
-    
-    ax.axhline(y=1.0, color='#333333', linestyle='-', linewidth=1, zorder=1)
+    _round_bar_patches(ax)
+    ax.axhline(y=1.0, color='#64748b', linestyle='-', linewidth=1.2, alpha=0.9, zorder=1)
     ax.set_xlabel('Pattern')
     ax.set_ylabel('Speedup vs CTRE-SIMD')
     ax.set_title(f'CTRE-SIMD Speedup ({format_size(size)} input)')
     ax.set_xticks(x)
     ax.set_xticklabels([get_pattern_label(p) for p in patterns], rotation=30, ha='right')
-    ax.legend(loc='upper right', fontsize=8)
+    ax.legend(loc='upper right', fontsize=9, framealpha=0.98, edgecolor='#e2e8f0')
     ax.set_axisbelow(True)
-    
     plt.tight_layout()
     fig.savefig(output_path, dpi=PLOT_PARAMS['save_dpi'], bbox_inches='tight', facecolor='white')
     plt.close(fig)
     print(f"Saved {output_path}")
 
-def plot_heatmap(df, output_path, size=None, baseline='CTRE', vmin=0.1, vmax=10.0):
+def plot_heatmap(df, output_path, size=None, baseline=None, vmin=0.1, vmax=10.0):
     """Publication-quality speedup heatmap using seaborn."""
     setup_style()
-    
     all_sizes = sorted(df['Input_Size'].unique())
     if size is None:
         size = find_closest_size(1024, all_sizes)
-    
     size_data = df[df['Input_Size'] == size]
     patterns = list(df['Pattern'].unique())
-    
-    # Engines to compare (excluding baseline)
-    engines = [e for e in ['CTRE-SIMD', 'CTRE-Scalar', 'RE2', 'PCRE2', 'Hyperscan', 'std::regex']
-               if e in df['Engine'].unique() and e != baseline]
+    available = set(df['Engine'].unique())
+    candidates = (baseline,) if baseline else ('CTRE', 'CTRE-Scalar', 'CTRE-SIMD')
+    baseline = next((b for b in candidates if b in available), None)
+    if not baseline:
+        print(f"No valid baseline for heatmap at size {format_size(size)}")
+        return
+    engines = [e for e in ['CTRE-SIMD', 'CTRE-Scalar', 'CTRE', 'RE2', 'PCRE2', 'Hyperscan', 'std::regex']
+               if e in available and e != baseline]
     
     # Build speedup matrix: engines (rows) x patterns (columns)
     speedup_data = {}
@@ -322,7 +370,6 @@ def plot_heatmap(df, output_path, size=None, baseline='CTRE', vmin=0.1, vmax=10.
         for idx in heatmap_df.index:
             annot.loc[idx, col] = format_speedup(heatmap_df.loc[idx, col])
     
-    # Create figure with dynamic sizing
     fig_width = len(valid_patterns) * 0.8 + 2
     fig_height = len(engines) * 0.6 + 1.5
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
@@ -336,40 +383,52 @@ def plot_heatmap(df, output_path, size=None, baseline='CTRE', vmin=0.1, vmax=10.
                 cmap=get_heatmap_cmap(), norm=norm,
                 linewidths=PLOT_PARAMS['heatmap_linewidth'],
                 linecolor=PLOT_PARAMS['heatmap_linecolor'],
-                cbar_kws={'label': f'Speedup vs {baseline}', 'shrink': 0.8},
-                annot_kws={'size': 10, 'weight': 'medium'})
-    
+                cbar_kws={
+                    'label': f'Speedup vs {baseline}',
+                    'shrink': 0.75,
+                    'aspect': 25,
+                    'pad': 0.02,
+                },
+                annot_kws={'size': 11, 'weight': 'medium', 'ha': 'center', 'va': 'center'})
+    if len(ax.figure.axes) > 1:
+        cax = ax.figure.axes[-1]
+        cax.tick_params(labelsize=9, length=3, width=0.8)
+        cax.set_ylabel(cax.get_ylabel(), fontsize=11, fontweight='medium')
+        # Subtle border around colorbar (Colorbar is attached to the collection in some backends)
+        try:
+            cb = getattr(ax.collections[0], 'colorbar', None)
+            if cb is not None and hasattr(cb, 'outline') and cb.outline is not None:
+                cb.outline.set_edgecolor('#e2e8f0')
+                cb.outline.set_linewidth(0.8)
+        except (IndexError, AttributeError):
+            pass
     ax.set_xlabel('')
     ax.set_ylabel('')
     ax.set_title(f'Speedup vs {baseline} ({format_size(size)} input)')
     plt.xticks(rotation=40, ha='right')
     plt.yticks(rotation=0)
-    
     plt.tight_layout()
     fig.savefig(output_path, dpi=PLOT_PARAMS['save_dpi'], bbox_inches='tight', facecolor='white')
     plt.close(fig)
     print(f"Saved {output_path}")
 
 def plot_scaling(df, output_path, pattern=None):
-    """Performance scaling line plot."""
+    """Performance scaling line plot — thick lines, clear markers, pro legend."""
     setup_style()
     if pattern is None:
         pattern = df['Pattern'].iloc[0]
-    
     pdf = df[df['Pattern'] == pattern]
     engines = [e for e in ENGINES if e in pdf['Engine'].unique()]
     sizes = sorted(pdf['Input_Size'].unique())
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
+    fig, ax = plt.subplots(figsize=(11, 6))
     markers = ['o', 's', '^', 'D', 'v', 'p', 'h']
     for i, engine in enumerate(engines):
         edf = pdf[pdf['Engine'] == engine].sort_values('Input_Size')
         ax.plot(edf['Input_Size'], edf['Time_ns'],
-                marker=markers[i % len(markers)], linestyle='-',
-                color=ENGINE_COLORS.get(engine, '#333'),
-                linewidth=2, markersize=6, label=engine)
-    
+                 marker=markers[i % len(markers)], linestyle='-',
+                 color=ENGINE_COLORS.get(engine, '#64748b'),
+                 linewidth=2.5, markersize=8, markeredgecolor='white', markeredgewidth=0.8,
+                 label=engine)
     ax.set_xlabel('Input Size')
     ax.set_ylabel('Matching Time (ns)')
     ax.set_title(f'Performance Scaling: {get_pattern_label(pattern)}')
@@ -377,36 +436,32 @@ def plot_scaling(df, output_path, pattern=None):
     ax.set_yscale('log')
     ax.set_xticks(sizes)
     ax.set_xticklabels([format_size(s) for s in sizes])
-    ax.legend(loc='upper left', frameon=True)
-    
+    ncol = 2 if len(engines) > 4 else 1
+    ax.legend(loc='upper left', frameon=True, fancybox=True, shadow=True,
+              fontsize=9, framealpha=0.98, edgecolor='#e2e8f0', ncol=ncol)
     plt.tight_layout()
     fig.savefig(output_path, dpi=PLOT_PARAMS['save_dpi'], bbox_inches='tight', facecolor='white')
     plt.close(fig)
     print(f"Saved {output_path}")
 
 def speedup_to_color(s):
-    """Map speedup value to color: red family (<1.0), green family (>=1.0)."""
-    import math
-    if s < 0.99:  # Use 0.99 to handle floating point issues
-        # Red family for slower than baseline
-        if s <= 0.1:
-            return '#8b0000'  # dark red
-        elif s <= 0.3:
-            return '#d73027'  # red
-        elif s <= 0.6:
-            return '#fc8d59'  # orange-red
+    """Map speedup to color: rose (<1x), amber (1x), emerald (>1x). Matches heatmap."""
+    if s < 0.99:
+        if s <= 0.2:
+            return '#be123c'   # rose-700
+        elif s <= 0.5:
+            return '#e11d48'   # rose-600
         else:
-            return '#fdae61'  # light orange-red
+            return '#fb7185'   # rose-400
     else:
-        # Green family for faster than baseline
-        if s >= 50:
-            return '#1a9850'  # dark green
-        elif s >= 10:
-            return '#66bd63'  # green
-        elif s >= 2:
-            return '#a6d96a'  # light green
+        if s >= 10:
+            return '#15803d'   # green-700
+        elif s >= 3:
+            return '#22c55e'   # green-500
+        elif s >= 1.5:
+            return '#86efac'   # green-300
         else:
-            return '#d9ef8b'  # yellow-green
+            return '#fde68a'   # amber-200 (neutral)
 
 def plot_speedup_bars(df, output_path, size=None):
     """Speedup bar chart with annotations (CTRE-SIMD vs baseline)."""
@@ -425,24 +480,32 @@ def plot_speedup_bars(df, output_path, size=None):
     fig, ax = plt.subplots(figsize=(10, 6))
     x = np.arange(len(patterns))
     colors = [speedup_to_color(s) for s in speedups]
-    bars = ax.bar(x, speedups, color=colors,
-                  edgecolor=PLOT_PARAMS['bar_edge_color'],
-                  linewidth=PLOT_PARAMS['bar_edge_width'])
-    ax.axhline(y=1.0, color='#666', linestyle='--', linewidth=1, alpha=0.7)
-    
-    for bar, s in zip(bars, speedups):
-        ax.annotate(f'{s:.2f}×', xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                    xytext=(0, 3), textcoords='offset points', ha='center', va='bottom',
-                    fontsize=8, fontweight='bold' if s >= 2 else 'normal')
-    
+    ax.bar(x, speedups, color=colors,
+           edgecolor=PLOT_PARAMS['bar_edge_color'],
+           linewidth=PLOT_PARAMS['bar_edge_width'])
+    _round_bar_patches(ax)
+    ax.axhline(y=1.0, color='#64748b', linestyle='--', linewidth=1.2, alpha=0.8)
+    # Headroom so labels above bars don't clip (PolicyViz: labels at end of bars)
+    y_max = max(speedups) if speedups else 1
+    ax.set_ylim(0, y_max * 1.14)
+    try:
+        from matplotlib.patheffects import withStroke
+        path_effects = [withStroke(linewidth=1.5, foreground='white')]
+    except ImportError:
+        path_effects = []
+    for bar, s in zip(reversed(list(ax.patches)), speedups):
+        cx = bar.get_x() + bar.get_width() / 2
+        top = bar.get_height()
+        weight = 'bold' if s >= 2 or s < 0.5 else 'medium'
+        ax.annotate(f'{s:.2f}×', xy=(cx, top), xytext=(0, 5), textcoords='offset points',
+                    ha='center', va='bottom', fontsize=9, fontweight=weight,
+                    color='#1e293b', path_effects=path_effects)
     ax.set_xlabel('Pattern')
     ax.set_ylabel('Speedup')
     ax.set_title(f'CTRE-SIMD Speedup vs Baseline ({format_size(size)} input)')
     ax.set_xticks(x)
     ax.set_xticklabels([get_pattern_label(p) for p in patterns], rotation=30, ha='right')
-    ax.set_ylim(bottom=0)
     ax.set_axisbelow(True)
-    
     plt.tight_layout()
     fig.savefig(output_path, dpi=PLOT_PARAMS['save_dpi'], bbox_inches='tight', facecolor='white')
     plt.close(fig)
