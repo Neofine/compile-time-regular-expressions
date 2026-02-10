@@ -3,10 +3,10 @@
 *.d
 build/
 cmake-build-*/
+tests/build/
 
 # Executables
 debug_*
-test_*
 *.out
 
 # Python
@@ -28,9 +28,9 @@ mtent12.txt
 *.bak
 *.backup
 
-# Generated output
+# Benchmark output
 benchmarking/build/
-
-# Benchmark binaries
-bench_simd
-bench_baseline
+benchmarking/plots/
+results/
+*.csv
+*.png

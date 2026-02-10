@@ -1,0 +1,10 @@
+# Required for analyze.py
+pandas>=1.0
+matplotlib>=3.5
+numpy>=1.20
+seaborn>=0.11
+
+# Optional: Plotly-based charts (different look) — analyze_plotly.py
+# plotly>=5.0
+# kaleido>=0.2
+

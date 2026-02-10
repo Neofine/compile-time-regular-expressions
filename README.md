@@ -1,117 +1,81 @@
 # CTRE-SIMD
 
-SIMD extensions to [CTRE](https://github.com/hanickadot/compile-time-regular-expressions) (Compile-Time Regular Expressions).
+SIMD-accelerated extensions to [CTRE](https://github.com/hanickadot/compile-time-regular-expressions) (Compile-Time Regular Expressions).
 
-## File Overview
+## Features
 
-### SIMD Matching (`include/ctre/`)
-```
-simd_detection.hpp          - CPU feature detection, size thresholds
-simd_character_classes.hpp  - [a-z]+, [0-9]+ via range comparison
-simd_multirange.hpp         - [a-zA-Z0-9]+ via parallel range checks
-simd_shufti.hpp             - Sparse sets [aeiou]+ via shuffle LUT
-simd_repetition.hpp         - Single character a+, b*
-simd_heuristics.hpp         - Compile-time eligibility checks
-simd_literal_search.hpp     - SIMD substring search
-simd_string_matching.hpp    - Fixed literal matching
-```
+- **Drop-in replacement**: Works with existing CTRE patterns
+- **Automatic SIMD dispatch**: Vectorized matching for eligible patterns
+- **Zero runtime overhead for ineligible patterns**: Falls back to scalar CTRE
+- **AVX2/SSE4.2 support** with scalar fallback for other architectures
 
-### Pattern Analysis (`include/ctre/`)
-```
-glushkov_nfa.hpp            - AST → position NFA
-dominator_analysis.hpp      - Extract required literals (all paths must contain)
-region_analysis.hpp         - Extract common suffixes from alternations
-decomposition.hpp           - Public API for literal extraction
-pattern_traits.hpp          - Type traits for pattern introspection
-```
+## Usage
 
-### BitNFA Engine (`include/ctre/bitnfa/`)
-```
-bitnfa_match.hpp            - Entry points: match(), search()
-compiler.hpp                - AST → NFA transitions
-state_mask.hpp              - 128-bit state vector operations
-simd_acceleration.hpp       - SIMD helpers for state updates
+```cpp
+#include <ctre.hpp>
+
+// Works exactly like CTRE - SIMD acceleration is automatic
+auto result = ctre::match<"[a-z]+">(input);
+auto found = ctre::search<"[0-9]+@[a-z]+\\.com">(input);
+
+// Patterns that benefit from SIMD:
+// - Character class repetitions: [a-z]+, [0-9]+, [a-zA-Z0-9]+
+// - Single character repetitions: a+, x*
+// - Sparse character sets: [aeiou]+
+// - Patterns with required literals for prefiltering
 ```
 
-### Modified Original Files
-```
-evaluation.hpp    - SIMD dispatch for repetitions (lines 465-680, 850-930)
-wrapper.hpp       - BitNFA dispatch for alternations (lines 87-100, 160-175)
-```
+## Installation
 
-## Where to Start Reading
-
-1. **Dispatch logic**: `evaluation.hpp:570` - SIMD eligibility checks and dispatch
-2. **Core SIMD**: `simd_character_classes.hpp` - vectorized range matching loop
-3. **Pattern analysis**: `glushkov_nfa.hpp` - regex AST to position NFA
-4. **Literal extraction**: `dominator_analysis.hpp` - required literal identification
-
-## Running Benchmarks
+Header-only. Copy `include/` to your project or add to include path:
 
 ```bash
-# Full suite - builds, runs all benchmarks, generates plots
-cd benchmarking && bash scripts/bench_all.sh
-
-# Individual steps:
-bash scripts/build.sh           # Build benchmark executables
-bash scripts/run.sh             # Run runtime benchmarks → CSV
-bash scripts/compile_time.sh    # Measure compile time
-bash scripts/codesize.sh        # Measure binary sizes
-python3 generate.py             # Generate all plots
-
-# Publication-quality benchmarks (requires root for CPU isolation)
-sudo bash scripts/setup.sh      # Configure system (disable turbo, set governor)
-BENCHMARK_RUNS=10 bash scripts/run.sh
-sudo bash scripts/restore.sh    # Restore system settings
+g++ -std=c++20 -O3 -march=native -I/path/to/ctre-simd/include your_code.cpp
 ```
 
-## Benchmark Categories
+## Requirements
 
-| Category | Description |
-|----------|-------------|
-| `simple` | Single character classes: `[0-9]+`, `[a-z]+` |
-| `complex` | Combined patterns: `[a-z]+[0-9]+`, decimals |
-| `realworld` | Validation: IPv4, UUID, email, dates |
-| `nomatch` | Non-matching input rejection |
-| `fallback` | Patterns requiring scalar fallback |
-| `small` | Small inputs (1-16 bytes) |
-| `large` | Large inputs (32KB-8MB) |
-| `adversarial` | SIMD-unfavorable patterns |
+- C++20 compiler (GCC 11+, Clang 14+)
+- x86-64 with AVX2 for best performance (SSE4.2 and scalar fallbacks available)
 
-## Output Structure
+## Optimized Patterns
 
+| Pattern Type | Example | Optimization |
+|--------------|---------|--------------|
+| Character ranges | `[a-z]+`, `[0-9]+` | AVX2 range comparison |
+| Multi-range | `[a-zA-Z0-9]+` | Parallel range checks |
+| Sparse sets | `[aeiou]+` | Shufti algorithm |
+| Single char | `a+`, `x*` | SIMD broadcast + compare |
+| Alternations | `(foo\|bar)` | BitNFA engine |
+| Literal prefilter | `.*test.*` | SIMD literal search |
+
+## Benchmarks
+
+```bash
+cd benchmarking && ./build.sh && ./build/bench_simd
 ```
-benchmarking/output/
-├── simple/simd.csv, scalar.csv, original.csv
-├── complex/...
-├── realworld/...
-├── nomatch/...
-├── codesize.csv
-├── compile_time.csv
-└── figures/
-    ├── simple/heatmap.png, *_time.png
-    ├── complex/...
-    ├── overview/simd_delta_by_size.png
-    ├── compile_time/compile_time_by_category.png
-    └── statistical/cv_histogram.png
-```
+
+Requires RE2, PCRE2, Hyperscan for comparisons.
 
 ## Tests
 
 ```bash
-g++ -std=c++20 -mavx2 -I include tests/test_glushkov.cpp -o test && ./test
+cd tests && bash run_tests.sh
 ```
 
-Relevant test files:
-- `test_glushkov.cpp` - NFA construction
-- `test_dominators.cpp` - Literal extraction
-- `test_region_analysis.cpp` - Suffix extraction
-- `test_char_class_expansion.cpp` - Character class handling
-- `integration_test_*.cpp` - End-to-end correctness
+## Project Structure
 
-## Build Requirements
+```
+include/
+├── ctre.hpp                    # Main include (use this)
+├── ctre/
+│   ├── simd_*.hpp              # SIMD matching implementations
+│   ├── glushkov_nfa.hpp        # Pattern analysis
+│   ├── dominator_analysis.hpp  # Literal extraction
+│   └── bitnfa/                 # BitNFA engine for alternations
+└── ctll/                       # Compile-time library (from CTRE)
+```
 
-- GCC 11+ or Clang 14+ with C++20 support
-- x86-64 with AVX2 (for SIMD paths; SSE4.2 fallback available)
-- RE2, PCRE2, Hyperscan libraries (for comparative benchmarks)
-- Python 3.8+, matplotlib, pandas, seaborn, numpy (for plotting)
+## License
+
+Apache 2.0 (same as CTRE)
