@@ -1,105 +1,78 @@
-# CTRE Benchmarking
+# Benchmarks
 
-Benchmarks comparing CTRE-SIMD against original CTRE, CTRE-Scalar, RE2, PCRE2, Hyperscan, and std::regex.
-
-## Structure
-
-```
-benchmarking/
-├── src/              # C++ benchmark source
-│   ├── benchmark.cpp
-│   └── patterns.hpp
-├── scripts/          # Shell scripts
-│   ├── build.sh      # Build executables
-│   ├── run.sh        # Run benchmarks
-│   ├── setup.sh      # System setup (CPU isolation)
-│   ├── restore.sh    # Restore system settings
-│   ├── codesize.sh   # Measure binary sizes
-│   ├── compile_time.sh
-│   ├── sysinfo.sh
-│   └── common.sh
-├── plots/            # Python plotting library
-│   ├── style.py
-│   ├── loader.py
-│   └── figures.py
-├── docs/             # LaTeX documentation
-├── generate.py       # Main plot generator
-├── stats.py          # Statistical aggregation
-└── README.md
-```
+Compare CTRE-SIMD against CTRE (original), CTRE-Scalar, RE2, PCRE2, Hyperscan, and std::regex.
 
 ## Requirements
 
-- Linux x86_64 with AVX2/SSE4.2
-- GCC 11+ or Clang 14+
-- Python 3.8+ with matplotlib, pandas, seaborn, numpy
-- RE2, PCRE2, Hyperscan libraries
-
-## Quick Start
-
 ```bash
-# Build
-bash scripts/build.sh
-
-# Run benchmarks
-CATEGORIES="simple complex scaling realworld NonMatch"
-for cat in $CATEGORIES; do
-    mkdir -p output/$cat
-    ./build/bench_simd "$cat" > output/$cat/simd.csv
-    ./build/bench_scalar "$cat" > output/$cat/scalar.csv  
-    ./build/bench_original "$cat" > output/$cat/original.csv
-done
-
-# Generate plots
-python3 generate.py
+sudo apt install libre2-dev libpcre2-dev libhyperscan-dev
+pip install pandas matplotlib numpy  # For analysis
 ```
 
-## Publication-Quality Benchmarks
+## Usage
 
 ```bash
-# Setup (requires root)
-sudo bash scripts/setup.sh
-
-# Run with statistics
-BENCHMARK_RUNS=10 bash scripts/run.sh
-
-# Generate plots
-python3 generate.py
-
-# Restore system
-sudo bash scripts/restore.sh
+./bench.sh --build              # Build only
+./bench.sh Simple               # Run Simple category  
+./bench.sh --build Simple       # Build then run
+./bench.sh > results.csv        # Run all, save to CSV
+sudo ./bench.sh --perf Simple   # Run with CPU tuning
 ```
+
+## Analysis
+
+```bash
+./bench.sh Simple > results.csv
+python3 analyze.py results.csv                    # Full analysis + plots
+python3 analyze.py results.csv --no-plots         # CLI tables only
+python3 analyze.py results.csv -o figures/        # Custom output dir
+```
+
+**Generated plots:**
+- `comparison.png` — Bar chart comparing all 7 engines
+- `speedup.png` — CTRE-SIMD speedup vs each engine
+- `heatmap.png` — Speedup grid (pattern × input size)
+- `scaling.png` — Performance scaling curves
+
+## Engines Compared
+
+| Engine | Description |
+|--------|-------------|
+| CTRE-SIMD | This library (SIMD-optimized) |
+| CTRE-Scalar | This library with SIMD disabled |
+| CTRE | Original upstream CTRE (baseline) |
+| RE2 | Google's RE2 |
+| PCRE2 | Perl Compatible Regular Expressions |
+| Hyperscan | Intel's high-performance regex |
+| std::regex | C++ standard library |
 
 ## Categories
 
 | Category | Description |
 |----------|-------------|
-| `simple` | Basic character classes |
-| `complex` | Real patterns (URLs, emails) |
-| `scaling` | Pattern complexity scaling |
-| `realworld` | Production workloads |
-| `small` | Small inputs (1-16 bytes) |
-| `large` | Large inputs (1KB-64KB) |
-| `fallback` | Patterns requiring fallback |
-| `adversarial` | SIMD-unfavorable patterns |
-| `instantiation` | Compilation time |
-| `NonMatch` | Non-matching inputs |
-| `arm` | ARM patterns (ARM only) |
-| `arm_nomatch` | ARM non-matching (ARM only) |
+| Simple | `[0-9]+`, `[a-z]+`, `[aeiou]+` |
+| Complex | Decimal, hex, identifiers, URLs |
+| RealWorld | IPv4, UUID, email, dates |
+| Scaling | Alternation vs character class |
+| NonMatch | Prefilter rejection performance |
+| Small | 1-16 byte inputs |
+| Large | 32KB-8MB inputs |
+| Fallback | Backrefs, lazy quantifiers |
+| Adversarial | Edge cases, worst cases |
+| Instantiation | Pattern compilation overhead |
 
-## Output
+## Output Format
 
-Plots are saved to `output/figures/<category>/`:
-- `heatmap.png` — Speedup comparison
-- `bar_comparison.png` — Bar chart
-- `*_time.png` — Time series
+CSV: `Pattern,Engine,Input_Size,Time_ns,Matches`
 
-## Adding Patterns
+- **Time_ns** — Execution time in nanoseconds (ns)
+- **Input_Size** — Input string length in bytes
+- **Matches** — Number of successful matches (for verification)
 
-Edit `src/benchmark.cpp`:
+## Options
 
-```cpp
-benchmark_pattern<"[0-9]+">("Category", "name", "[0-9]+", gen_digits, SIZES);
-```
-
-Rebuild and rerun.
+| Flag | Description |
+|------|-------------|
+| `-b, --build` | Build benchmark executables |
+| `-p, --perf` | Performance mode (disables ASLR, sets CPU governor) |
+| `-h, --help` | Show help |
