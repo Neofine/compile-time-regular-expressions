@@ -1,12 +1,14 @@
 # Build artifacts
 *.o
 *.d
+**/*.tmp
 build/
 cmake-build-*/
 
-# Executables
+# Executables (from upstream - allows test_*.cpp sources)
+test
+result
 debug_*
-test_*
 *.out
 
 # Python
