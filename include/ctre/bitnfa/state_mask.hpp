@@ -1,7 +1,7 @@
 #ifndef CTRE__BITNFA__STATE_MASK__HPP
 #define CTRE__BITNFA__STATE_MASK__HPP
 
-#include "../simd_detection.hpp"
+#include "../simd/detection.hpp"
 #ifdef CTRE_ARCH_X86
 #include <immintrin.h> // For __m128i intrinsics
 #endif

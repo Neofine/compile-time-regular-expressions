@@ -1,7 +1,7 @@
 #ifndef CTRE__SIMD_LITERAL_SEARCH__HPP
 #define CTRE__SIMD_LITERAL_SEARCH__HPP
 
-#include "simd_detection.hpp"
+#include "detection.hpp"
 #include <cstring>
 
 #if CTRE_SIMD_ENABLED && defined(CTRE_ARCH_X86)

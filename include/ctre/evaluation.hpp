@@ -7,18 +7,18 @@
 #include "first.hpp"
 #include "flags_and_modes.hpp"
 #include "return_type.hpp"
-#include "simd_detection.hpp"
+#include "simd/detection.hpp"
 #ifndef CTRE_DISABLE_SIMD
-#include "simd_character_classes.hpp"
-#include "simd_multirange.hpp"
-#include "simd_pattern_analysis.hpp"
-#include "simd_repetition.hpp"
-#include "simd_sequence_fusion.hpp"
-#include "simd_shufti.hpp"
-#include "simd_single_char.hpp"
-#include "simd_string_matching.hpp"
+#include "simd/character_classes.hpp"
+#include "simd/multirange.hpp"
+#include "simd/pattern_analysis.hpp"
+#include "simd/repetition.hpp"
+#include "simd/sequence_fusion.hpp"
+#include "simd/shufti.hpp"
+#include "simd/single_char.hpp"
+#include "simd/string_matching.hpp"
 #else
-#include "simd_stubs.hpp"
+#include "simd/stubs.hpp"
 #endif
 #include "starts_with_anchor.hpp"
 #include "utility.hpp"
@@ -259,10 +259,20 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, typename... Tail>
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator current, const EndIterator last,
                                        const flags& f, R captures, ctll::list<assert_subject_end, Tail...>) noexcept {
-    if (last != current) {
-        return not_matched;
+    // Standard regex: \z matches at end of string OR before optional final \n (same as $)
+    // This is needed so that match<"abc$">("abc\n") succeeds
+    if (last == current) {
+        return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
     }
-    return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+    
+    // Allow match if we're before an optional final newline
+    auto next = current;
+    ++next;
+    if (next == last && *current == '\n') {
+        return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+    }
+    
+    return not_matched;
 }
 
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, typename... Tail>
@@ -278,10 +288,21 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
             return not_matched;
         }
     } else {
-        if (last != current) {
-            return not_matched;
+        // Standard regex: $ matches at end of string OR before optional final \n
+        if (last == current) {
+            // At end of string
+            return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
         }
-        return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+        
+        // Check if we're before an optional final newline
+        auto next = current;
+        ++next;
+        if (next == last && *current == '\n') {
+            // We're at the last character and it's a \n - match succeeds
+            return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+        }
+        
+        return not_matched;
     }
 }
 
@@ -317,11 +338,21 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
         }
     }
 
-    // TODO properly match line end
-    if (last != current) {
-        return not_matched;
+    // Standard regex: $ matches at end of string OR before optional final \n
+    if (last == current) {
+        // At end of string
+        return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
     }
-    return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+    
+    // Check if we're before an optional final newline
+    auto next = current;
+    ++next;
+    if (next == last && *current == '\n') {
+        // We're at the last character and it's a \n - match succeeds
+        return evaluate(begin, current, last, f, captures, ctll::list<Tail...>());
+    }
+    
+    return not_matched;
 }
 
 // matching boundary
@@ -948,14 +979,16 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, typename... Tail>
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator, Iterator, const EndIterator, flags, R captures,
                                        ctll::list<end_lookahead_mark>) noexcept {
-    // TODO check interaction with non-empty flag
+    // Note: Lookaheads correctly support empty matches (e.g., (?=b*) can match zero b's).
+    // The not_empty_match flag doesn't need to be checked here since lookaheads don't consume input.
     return captures.matched();
 }
 
 template <typename R, typename BeginIterator, typename Iterator, typename EndIterator, typename... Tail>
 constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator, Iterator, const EndIterator, flags, R captures,
                                        ctll::list<end_lookbehind_mark>) noexcept {
-    // TODO check interaction with non-empty flag
+    // Note: Lookbehinds correctly support empty matches (e.g., (?<=a*) can match zero a's).
+    // The not_empty_match flag doesn't need to be checked here since lookbehinds don't consume input.
     return captures.matched();
 }
 

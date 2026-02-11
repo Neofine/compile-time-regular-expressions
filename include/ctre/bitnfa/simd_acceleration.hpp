@@ -1,8 +1,8 @@
 #ifndef CTRE_BITNFA_SIMD_ACCELERATION_HPP
 #define CTRE_BITNFA_SIMD_ACCELERATION_HPP
 
-#include "../simd_detection.hpp"
-#include "../simd_character_classes.hpp"
+#include "../simd/detection.hpp"
+#include "../simd/character_classes.hpp"
 #include "../atoms.hpp"
 #include <cstddef>
 #include <cstring>

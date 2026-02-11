@@ -1,7 +1,7 @@
 #ifndef CTRE__SIMD_SINGLE_CHAR__HPP
 #define CTRE__SIMD_SINGLE_CHAR__HPP
 
-#include "simd_detection.hpp"
+#include "detection.hpp"
 #include <cstddef>
 #ifdef CTRE_ARCH_X86
 #include <immintrin.h>

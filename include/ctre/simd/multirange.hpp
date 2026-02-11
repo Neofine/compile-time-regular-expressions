@@ -1,8 +1,8 @@
 #ifndef CTRE__SIMD_MULTIRANGE__HPP
 #define CTRE__SIMD_MULTIRANGE__HPP
 
-#include "atoms_characters.hpp"
-#include "simd_detection.hpp"
+#include "../atoms_characters.hpp"
+#include "detection.hpp"
 #ifdef CTRE_ARCH_X86
 #include <immintrin.h>
 #endif

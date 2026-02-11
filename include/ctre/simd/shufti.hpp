@@ -1,10 +1,10 @@
 #ifndef CTRE__SIMD_SHUFTI__HPP
 #define CTRE__SIMD_SHUFTI__HPP
 
-#include "atoms.hpp"
-#include "atoms_characters.hpp"
-#include "flags_and_modes.hpp"
-#include "simd_detection.hpp"
+#include "../atoms.hpp"
+#include "../atoms_characters.hpp"
+#include "../flags_and_modes.hpp"
+#include "detection.hpp"
 #include <array>
 #include <cstring>
 #ifdef CTRE_ARCH_X86

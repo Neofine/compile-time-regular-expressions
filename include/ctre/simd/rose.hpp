@@ -1,9 +1,9 @@
 #ifndef CTRE__SIMD_ROSE__HPP
 #define CTRE__SIMD_ROSE__HPP
 
-#include "utility.hpp"
-#include "flags_and_modes.hpp"
-#include "simd_detection.hpp"
+#include "../utility.hpp"
+#include "../flags_and_modes.hpp"
+#include "detection.hpp"
 #ifdef CTRE_ARCH_X86
 #include <immintrin.h>
 #endif

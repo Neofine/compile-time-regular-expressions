@@ -1,8 +1,8 @@
 #ifndef CTRE__SIMD_SHIFT_OR__HPP
 #define CTRE__SIMD_SHIFT_OR__HPP
 
-#include "flags_and_modes.hpp"
-#include "simd_detection.hpp"
+#include "../flags_and_modes.hpp"
+#include "detection.hpp"
 #include <array>
 #include <cstring>
 #ifdef CTRE_ARCH_X86

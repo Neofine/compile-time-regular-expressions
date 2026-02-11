@@ -5,7 +5,7 @@
 #include "evaluation.hpp"
 #ifndef CTRE_DISABLE_SIMD
 #include "decomposition.hpp"
-#include "simd_shift_or.hpp"
+#include "simd/shift_or.hpp"
 #endif
 #include <iterator>
 

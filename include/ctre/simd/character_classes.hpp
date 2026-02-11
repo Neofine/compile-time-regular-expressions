@@ -1,12 +1,12 @@
 #ifndef CTRE__SIMD_CHARACTER_CLASSES__HPP
 #define CTRE__SIMD_CHARACTER_CLASSES__HPP
 
-#include "atoms.hpp"
-#include "atoms_characters.hpp"
-#include "concepts.hpp"
-#include "flags_and_modes.hpp"
-#include "simd_detection.hpp"
-#include "simd_repetition.hpp"
+#include "../atoms.hpp"
+#include "../atoms_characters.hpp"
+#include "../concepts.hpp"
+#include "../flags_and_modes.hpp"
+#include "detection.hpp"
+#include "repetition.hpp"
 #include <array>
 #ifdef CTRE_ARCH_X86
 #include <immintrin.h>

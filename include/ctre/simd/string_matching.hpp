@@ -1,9 +1,9 @@
 #ifndef CTRE__SIMD_STRING_MATCHING__HPP
 #define CTRE__SIMD_STRING_MATCHING__HPP
 
-#include "atoms_characters.hpp"
-#include "flags_and_modes.hpp"
-#include "simd_detection.hpp"
+#include "../atoms_characters.hpp"
+#include "../flags_and_modes.hpp"
+#include "detection.hpp"
 #ifdef CTRE_ARCH_X86
 #include <immintrin.h>
 #include <nmmintrin.h>

@@ -1,9 +1,9 @@
 #ifndef CTRE__SIMD_SEQUENCE_FUSION__HPP
 #define CTRE__SIMD_SEQUENCE_FUSION__HPP
 
-#include "atoms.hpp"
-#include "atoms_characters.hpp"
-#include "simd_detection.hpp"
+#include "../atoms.hpp"
+#include "../atoms_characters.hpp"
+#include "detection.hpp"
 #include <array>
 #include <cstdint>
 #ifdef CTRE_ARCH_X86
