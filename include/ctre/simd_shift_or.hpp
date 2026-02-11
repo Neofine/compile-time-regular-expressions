@@ -465,7 +465,7 @@ template <size_t PatternLength, typename It, typename EndIt>
     requires std::contiguous_iterator<It> && std::same_as<std::remove_cvref_t<decltype(*std::declval<It>())>, char>
 inline bool match_string_vector_prefilter(It& cur, const EndIt last, const char* pattern) {
 #if CTRE_SIMD_ENABLED
-    // Use AVX2 version if available (much faster!)
+    // Use AVX2 version if available
     if (get_simd_capability() >= SIMD_CAPABILITY_AVX2) {
         return match_string_prefilter_2bytes<PatternLength>(cur, last, pattern);
     }

@@ -72,8 +72,6 @@ concept SimdCompatibleRange = CharIterator<I> && CharSentinel<E, I> && requires(
 /// Concept: Type that can be used as a regex pattern
 template <typename T>
 concept RegexPattern = requires {
-    // Pattern must have compile-time accessible data
-    // This is more of a semantic requirement checked at compile-time by CTRE
     typename T::value_type;
 };
 

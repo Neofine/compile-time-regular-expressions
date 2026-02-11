@@ -7,6 +7,7 @@
 #include "glushkov_nfa.hpp"
 #include "range.hpp"
 #include "return_type.hpp"
+#include "simd_detection.hpp"
 #include "utf8.hpp"
 #include "utility.hpp"
 #ifndef CTRE_IN_A_MODULE
@@ -84,8 +85,7 @@ struct match_method {
                                                  RE) noexcept {
         using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-        // BitNFA dispatch for alternation patterns
-        // BitNFA wins 15-39% for alternations at ALL input sizes
+        // BitNFA engine for alternation patterns (a|b|c)
         if constexpr (glushkov::is_select_v<RE> && std::is_pointer_v<IteratorBegin> &&
                       std::is_same_v<IteratorEnd, const char*>) {
             if (!std::is_constant_evaluated()) {
@@ -101,7 +101,7 @@ struct match_method {
             }
         }
 
-        // HYPERSCAN-INSPIRED: Graph analysis prefiltering for fail-fast
+        // Literal prefiltering: search for required literals before running full regex
         if constexpr (decomposition::has_prefilter_literal<RE>) {
             constexpr auto literal = decomposition::prefilter_literal<RE>;
 
@@ -138,7 +138,7 @@ struct match_method {
             }
         }
 
-        // Base evaluation with SIMD fast paths
+        // Standard evaluation with SIMD optimizations (see evaluation.hpp)
         return evaluate(orig_begin, begin, end, Modifier{}, return_type<result_iterator, RE>{},
                         ctll::list<start_mark, RE, assert_subject_end, end_mark, accept>());
     }
@@ -157,7 +157,7 @@ struct search_method {
                                                  RE) noexcept {
         using result_iterator = std::conditional_t<std::is_same_v<ResultIterator, void>, IteratorBegin, ResultIterator>;
 
-        // BitNFA dispatch for alternation patterns
+        // BitNFA engine for alternation search
         if constexpr (glushkov::is_select_v<RE> && std::is_pointer_v<IteratorBegin> &&
                       std::is_same_v<IteratorEnd, const char*>) {
             if (!std::is_constant_evaluated()) {
@@ -192,8 +192,8 @@ struct search_method {
         auto out = evaluate(orig_begin, it, end, Modifier{}, return_type<result_iterator, RE>{},
                             ctll::list<start_mark, RE, end_mark, accept>());
 
-        // Always track search end position (needed for split iterator to know where to continue)
-        out.set_end_mark(it);
+        // Propagate end position only if match failed (needed for split iterator to know where to continue)
+        if (!out) out.set_end_mark(it);
         return out;
     }
 

@@ -29,12 +29,17 @@ template <auto C> struct to_char_range<character<C>> {
     static constexpr CharRange value{static_cast<char>(C), static_cast<char>(C)};
 };
 
+template <typename T> struct is_simple_element : std::false_type {};
+template <auto Lo, auto Hi> struct is_simple_element<char_range<Lo, Hi>> : std::true_type {};
+template <auto C> struct is_simple_element<character<C>> : std::true_type {};
+template <typename... Elements> constexpr bool all_simple_elements = (is_simple_element<Elements>::value && ...);
+
 template <typename T> struct range_extractor {
     static constexpr size_t num_ranges = 0;
     static constexpr std::array<CharRange, 1> ranges = {CharRange()};
 };
 
-template <typename... Elements> requires(sizeof...(Elements) > 0 && sizeof...(Elements) <= 8)
+template <typename... Elements> requires(sizeof...(Elements) > 0 && sizeof...(Elements) <= 8 && all_simple_elements<Elements...>)
 struct range_extractor<set<Elements...>> {
     static constexpr size_t num_ranges = sizeof...(Elements);
     static constexpr auto build_ranges() {
@@ -50,6 +55,7 @@ struct range_extractor<set<Elements...>> {
 template <typename T> struct segment_info {
     static constexpr bool is_literal = false;
     static constexpr bool is_char_class = false;
+    static constexpr bool has_capture = false;
     static constexpr char literal_char = '\0';
     static constexpr size_t min_len = 0, max_len = 0;
     static constexpr bool is_unbounded = false;
@@ -60,6 +66,7 @@ template <typename T> struct segment_info {
 template <auto C> struct segment_info<character<C>> {
     static constexpr bool is_literal = true;
     static constexpr bool is_char_class = false;
+    static constexpr bool has_capture = false;
     static constexpr char literal_char = static_cast<char>(C);
     static constexpr size_t min_len = 1, max_len = 1;
     static constexpr bool is_unbounded = false;
@@ -67,10 +74,11 @@ template <auto C> struct segment_info<character<C>> {
     static constexpr std::array<CharRange, 1> ranges = {CharRange()};
 };
 
-template <size_t A, size_t B, typename... Elements> requires(sizeof...(Elements) > 0 && sizeof...(Elements) <= 8)
+template <size_t A, size_t B, typename... Elements> requires(sizeof...(Elements) > 0 && sizeof...(Elements) <= 8 && all_simple_elements<Elements...>)
 struct segment_info<repeat<A, B, set<Elements...>>> {
     static constexpr bool is_literal = false;
     static constexpr bool is_char_class = true;
+    static constexpr bool has_capture = false;
     static constexpr char literal_char = '\0';
     static constexpr size_t min_len = A;
     static constexpr size_t max_len = (B == 0) ? 16 : B;
@@ -78,6 +86,17 @@ struct segment_info<repeat<A, B, set<Elements...>>> {
     using Extractor = range_extractor<set<Elements...>>;
     static constexpr size_t num_ranges = Extractor::num_ranges;
     static constexpr auto ranges = Extractor::ranges;
+};
+
+template <size_t Id, typename... Content> struct segment_info<capture<Id, Content...>> {
+    static constexpr bool is_literal = false;
+    static constexpr bool is_char_class = false;
+    static constexpr bool has_capture = true;
+    static constexpr char literal_char = '\0';
+    static constexpr size_t min_len = 0, max_len = 0;
+    static constexpr bool is_unbounded = false;
+    static constexpr size_t num_ranges = 0;
+    static constexpr std::array<CharRange, 1> ranges = {CharRange()};
 };
 
 [[gnu::always_inline]] inline bool check_positions_with_ranges(const char* data, uint32_t mask,
@@ -196,8 +215,9 @@ inline Iterator match_sequence_generic(Iterator begin, EndIterator end) {
     constexpr size_t max_total = (... + segment_info<Elements>::max_len);
     constexpr size_t min_total = (... + segment_info<Elements>::min_len);
     constexpr bool has_unbounded = (... || segment_info<Elements>::is_unbounded);
+    constexpr bool has_captures = (... || segment_info<Elements>::has_capture);
 
-    if constexpr (max_total > 16 || (max_total - min_total) > 16 || VarGen::variants.size() == 0 || has_unbounded)
+    if constexpr (max_total > 16 || (max_total - min_total) > 16 || VarGen::variants.size() == 0 || has_unbounded || has_captures)
         return begin;
 
     size_t remaining;
@@ -225,7 +245,11 @@ inline Iterator match_sequence_generic(Iterator begin, EndIterator end) {
 
 template <typename... Elements, typename Iterator, typename EndIterator>
 inline Iterator match_sequence_fused(sequence<Elements...>*, Iterator begin, EndIterator end) {
-    return match_sequence_generic<Elements...>(begin, end);
+    if constexpr (!std::is_same_v<std::remove_cv_t<std::remove_reference_t<decltype(*begin)>>, char>) {
+        return begin;
+    } else {
+        return match_sequence_generic<Elements...>(begin, end);
+    }
 }
 
 #else

@@ -19,7 +19,7 @@ constexpr bool is_repetition_pattern() {
     return glushkov::is_repeat<T>::value;
 }
 
-// BitNFA wins on alternations (15-39% faster), loses on everything else
+// BitNFA for alternations
 template <typename Pattern>
 struct bitnfa_suitability {
     static constexpr bool is_alternation = is_alternation_pattern<Pattern>();

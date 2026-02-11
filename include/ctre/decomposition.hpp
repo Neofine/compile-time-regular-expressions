@@ -1,7 +1,7 @@
 #ifndef CTRE__DECOMPOSITION__HPP
 #define CTRE__DECOMPOSITION__HPP
 
-// Pattern Decomposition API - literal extraction and prefiltering interface
+// Pattern decomposition API
 
 #include "dominator_analysis.hpp"
 #include "glushkov_nfa.hpp"

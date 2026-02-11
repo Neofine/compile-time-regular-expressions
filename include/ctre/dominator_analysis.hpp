@@ -243,7 +243,7 @@ template <typename Pattern>
 inline auto extract_literal_with_fallback() {
     constexpr auto nfa = glushkov::glushkov_nfa<Pattern>();
 
-    // Step 1: Try dominant path analysis (fast, covers 97%+)
+    // Step 1: Try dominant path analysis
     constexpr auto path_result = extract_literal_from_dominators(nfa);
     if constexpr (path_result.has_literal) {
         return path_result;  // Path analysis succeeded!

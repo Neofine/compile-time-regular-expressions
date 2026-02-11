@@ -1,8 +1,7 @@
 #ifndef CTRE__GLUSHKOV_NFA__HPP
 #define CTRE__GLUSHKOV_NFA__HPP
 
-// Glushkov NFA Construction - converts CTRE AST to position-based NFA
-// Used for literal extraction and pattern decomposition
+// Glushkov NFA construction for literal extraction and pattern decomposition
 
 #include "atoms.hpp"
 #include "atoms_characters.hpp"

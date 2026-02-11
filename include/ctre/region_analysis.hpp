@@ -2,8 +2,8 @@
 #define CTRE__REGION_ANALYSIS__HPP
 
 // Dominant Region Analysis
-// Fallback when dominant path analysis fails (covers remaining 2-3% of patterns)
-// Based on Hyperscan paper Section 3.3 and ng_region.cpp implementation
+// Fallback when dominant path analysis fails
+// Based on Hyperscan paper Section 3.3
 
 #include "glushkov_nfa.hpp"
 #include "dominator_analysis.hpp"  // For literal_result
@@ -505,8 +505,7 @@ constexpr auto extract_string_backward(const NFA& nfa, size_t accept_state) {
     return result;
 }
 
-// Extract strings from a region
-// Strategy: Look for accept states in region and extract backwards
+// Extract strings from a region by looking for accept states and extracting backwards
 template <typename NFA>
 constexpr auto extract_strings_from_region(const NFA& nfa, const region_info& region) {
     dominators::literal_result<64> result{};
@@ -560,8 +559,6 @@ constexpr auto extract_literal_from_regions(const NFA& nfa) {
 // Back Edge Merging
 
 // Merge regions connected by back edges
-// Back edges can connect regions that seemed independent in the DAG
-// Must merge to maintain correctness!
 template <typename NFA, typename Regions>
 constexpr void merge_back_edge_regions(const acyclic_graph<NFA>& dag,
                                       Regions& regions) {

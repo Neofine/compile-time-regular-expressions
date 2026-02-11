@@ -33,20 +33,16 @@ constexpr void extract_from_character(
     current.add_char(static_cast<char>(V));
 }
 
-// Character class - expand if small
 template <typename CharClass, size_t MaxLiterals, size_t MaxLiteralLen>
 constexpr void extract_from_char_class(
     multi_literal_result<MaxLiterals, MaxLiteralLen>& result,
     literal_result<MaxLiteralLen>& current,
     CharClass*)
 {
-    // Check if expandable
     if constexpr (is_expandable_char_class<CharClass>()) {
         constexpr auto expanded = expand_char_class<CharClass>();
 
-        // If we have a current literal being built, branch for each expansion
         if (current.length > 0) {
-            // For each expanded character, create a new literal path
             for (size_t i = 0; i < expanded.count && result.count < MaxLiterals; ++i) {
                 literal_result<MaxLiteralLen> new_path = current;
                 new_path.add_char(expanded.chars[i]);

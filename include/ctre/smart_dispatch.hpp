@@ -23,7 +23,7 @@ struct smart_pattern_analysis {
     static constexpr bool is_alternation = glushkov::is_select<Pattern>::value;
     static constexpr bool is_repetition = glushkov::is_repeat<Pattern>::value;
 
-    // Use BitNFA for alternation patterns (15-39% faster)
+    // Use BitNFA for alternation patterns
     static constexpr bool use_bitnfa = is_alternation && (alternation_count >= 1);
 
     static constexpr const char* strategy_name() {
