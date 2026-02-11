@@ -24,9 +24,9 @@ HOT_ALWAYS_INLINE bool verify_equal(const unsigned char* s, const char* pat);
 
 template <typename It>
 HOT_ALWAYS_INLINE It uchar_to_iter(const unsigned char* p) {
-    // Need const_cast because the internal pointer is const but iterators may need non-const
     using char_type = typename std::iterator_traits<It>::value_type;
-    return It(const_cast<char_type*>(reinterpret_cast<const char_type*>(p)));
+    // Preserve const-ness: only cast to const char_type*, let iterator constructor handle rest
+    return It(reinterpret_cast<const char_type*>(p));
 }
 
 constexpr size_t SHIFT_OR_THRESHOLD = 32;

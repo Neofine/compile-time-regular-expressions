@@ -3,6 +3,15 @@
 
 #include <cstddef>
 
+// Compile-time SIMD control
+#ifndef CTRE_DISABLE_SIMD
+#define CTRE_SIMD_ENABLED 1
+#else
+#define CTRE_SIMD_ENABLED 0
+#endif
+
+// Only include architecture-specific headers when SIMD is enabled
+#if CTRE_SIMD_ENABLED
 // Architecture detection
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
     #define CTRE_ARCH_X86 1
@@ -14,50 +23,38 @@
         #define CTRE_ARM_NEON 1
     #endif
 #endif
+#endif // CTRE_SIMD_ENABLED
 
 namespace ctre::simd {
 
-// Compile-time SIMD control
-#ifndef CTRE_DISABLE_SIMD
-#define CTRE_SIMD_ENABLED 1
-#else
-#define CTRE_SIMD_ENABLED 0
-#endif
-
 [[nodiscard]] consteval bool can_use_simd() noexcept { return CTRE_SIMD_ENABLED; }
 
-// Runtime CPU feature detection (cached)
+// Runtime CPU feature detectionv
 #ifdef CTRE_ARCH_X86
 [[nodiscard]] inline bool has_avx2() noexcept {
-    static bool detected = false, result = false;
-    if (!detected) {
+    static const bool result = []() noexcept {
         unsigned int eax, ebx, ecx, edx;
         __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(7), "c"(0));
-        result = (ebx & (1 << 5)) != 0;
-        detected = true;
-    }
+        return (ebx & (1 << 5)) != 0;
+    }();
     return result;
 }
 
 [[nodiscard]] inline bool has_avx512f() noexcept {
-    static bool detected = false, result = false;
-    if (!detected) {
+    static const bool result = []() noexcept {
         unsigned int eax, ebx, ecx, edx;
         __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(7), "c"(0));
-        result = (ebx & (1 << 16)) != 0;
-        detected = true;
-    }
+        return (ebx & (1 << 16)) != 0;
+    }();
     return result;
 }
 
 [[nodiscard]] inline bool has_sse42() noexcept {
-    static bool detected = false, result = false;
-    if (!detected) {
+    static const bool result = []() noexcept {
         unsigned int eax, ebx, ecx, edx;
         __asm__ __volatile__("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(1));
-        result = (ecx & (1 << 20)) != 0;
-        detected = true;
-    }
+        return (ecx & (1 << 20)) != 0;
+    }();
     return result;
 }
 #else
@@ -83,16 +80,15 @@ inline constexpr int SIMD_CAPABILITY_NEON = 4;  // ARM NEON
 
 [[nodiscard]] inline int get_simd_capability() noexcept {
     if constexpr (CTRE_SIMD_ENABLED) {
-        static int cached = -1;
-        if (cached == -1) [[unlikely]] {
+        static const int cached = []() noexcept {
 #ifdef CTRE_ARCH_X86
-            cached = has_avx2() ? SIMD_CAPABILITY_AVX2 : has_sse42() ? SIMD_CAPABILITY_SSE42 : SIMD_CAPABILITY_NONE;
+            return has_avx2() ? SIMD_CAPABILITY_AVX2 : has_sse42() ? SIMD_CAPABILITY_SSE42 : SIMD_CAPABILITY_NONE;
 #elif defined(CTRE_ARM_NEON)
-            cached = SIMD_CAPABILITY_NEON;
+            return SIMD_CAPABILITY_NEON;
 #else
-            cached = SIMD_CAPABILITY_NONE;
+            return SIMD_CAPABILITY_NONE;
 #endif
-        }
+        }();
         return cached;
     }
     return SIMD_CAPABILITY_NONE;

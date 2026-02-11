@@ -103,7 +103,7 @@ template <typename PatternType, size_t... Is, typename Iterator, typename EndIte
          ...);
 
         int mask = _mm_movemask_epi8(result);
-        if (mask == 0xFFFF) {
+        if (static_cast<unsigned>(mask) == 0xFFFFU) {
             current += 16;
             count += 16;
         } else {

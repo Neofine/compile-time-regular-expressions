@@ -1,14 +1,17 @@
 #ifndef CTRE__FAST_SEARCH__HPP
 #define CTRE__FAST_SEARCH__HPP
 
-#include "decomposition.hpp"
 #include "wrapper.hpp"
 #include "evaluation.hpp"
+#ifndef CTRE_DISABLE_SIMD
+#include "decomposition.hpp"
 #include "simd_shift_or.hpp"
+#endif
 #include <iterator>
 
 namespace ctre {
 
+#ifndef CTRE_DISABLE_SIMD
 struct fast_search_method {
     template <auto Literal, size_t... Is>
     [[nodiscard]] static constexpr auto make_simd_finder(std::index_sequence<Is...>) noexcept {
@@ -116,6 +119,7 @@ constexpr auto fast_search = regular_expression<typename regex_builder<input>::t
 CTRE_EXPORT template <CTRE_REGEX_INPUT_TYPE input, typename... Modifiers>
 constexpr auto multiline_fast_search = regular_expression<typename regex_builder<input>::type,
                                                            fast_search_method, ctll::list<multiline, Modifiers...>>();
+#endif // CTRE_DISABLE_SIMD
 
 } // namespace ctre
 

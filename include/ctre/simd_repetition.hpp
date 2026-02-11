@@ -41,7 +41,7 @@ template <size_t MinCount, size_t MaxCount, typename Iterator, typename EndItera
 
     if constexpr (CTRE_SIMD_ENABLED) {
 #ifdef __AVX2__
-        while (count < 32 && (MaxCount == 0 || count < MaxCount)) {
+        while (current != last && (MaxCount == 0 || count + 32 <= MaxCount)) {
             __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
             __m256i result;
             if (ci) {
@@ -55,7 +55,7 @@ template <size_t MinCount, size_t MaxCount, typename Iterator, typename EndItera
             else { int m = __builtin_ctz(~mask); current += m; count += m; break; }
         }
 #elif defined(__SSE4_2__) || defined(__SSE2__)
-        while (count < 16 && (MaxCount == 0 || count < MaxCount)) {
+        while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
             __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
             __m128i result;
             if (ci) {

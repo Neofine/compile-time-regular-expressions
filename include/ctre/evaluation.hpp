@@ -7,8 +7,9 @@
 #include "first.hpp"
 #include "flags_and_modes.hpp"
 #include "return_type.hpp"
-#include "simd_character_classes.hpp"
 #include "simd_detection.hpp"
+#ifndef CTRE_DISABLE_SIMD
+#include "simd_character_classes.hpp"
 #include "simd_multirange.hpp"
 #include "simd_pattern_analysis.hpp"
 #include "simd_repetition.hpp"
@@ -16,6 +17,9 @@
 #include "simd_shufti.hpp"
 #include "simd_single_char.hpp"
 #include "simd_string_matching.hpp"
+#else
+#include "simd_stubs.hpp"
+#endif
 #include "starts_with_anchor.hpp"
 #include "utility.hpp"
 #ifndef CTRE_IN_A_MODULE

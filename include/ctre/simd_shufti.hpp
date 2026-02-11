@@ -514,7 +514,7 @@ inline bool match_char_class_shufti_avx2(Iterator& current, EndIterator last, co
     const unsigned char* out;
     if (shufti_find_avx2(p, end, cc, out)) {
         using char_type = typename std::iterator_traits<Iterator>::value_type;
-        current = Iterator(const_cast<char_type*>(reinterpret_cast<const char_type*>(out)));
+        current = Iterator(reinterpret_cast<const char_type*>(out));
         return true;
     }
     return false;
@@ -531,7 +531,7 @@ inline bool match_char_class_shufti_ssse3(Iterator& current, EndIterator last, c
     const unsigned char* out;
     if (shufti_find_ssse3(p, end, cc, out)) {
         using char_type = typename std::iterator_traits<Iterator>::value_type;
-        current = Iterator(const_cast<char_type*>(reinterpret_cast<const char_type*>(out)));
+        current = Iterator(reinterpret_cast<const char_type*>(out));
         return true;
     }
     return false;

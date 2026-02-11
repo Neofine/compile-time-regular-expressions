@@ -1,13 +1,18 @@
 #ifndef CTRE__WRAPPER__HPP
 #define CTRE__WRAPPER__HPP
 
+#include "evaluation.hpp"
+#ifndef CTRE_DISABLE_SIMD
 #include "bitnfa/bitnfa_match.hpp"
 #include "decomposition.hpp"
-#include "evaluation.hpp"
 #include "glushkov_nfa.hpp"
+#else
+#include "bitnfa_stubs.hpp"
+#include "decomposition_stubs.hpp"
+#include "glushkov_stubs.hpp"
+#endif
 #include "range.hpp"
 #include "return_type.hpp"
-#include "simd_detection.hpp"
 #include "utf8.hpp"
 #include "utility.hpp"
 #ifndef CTRE_IN_A_MODULE
