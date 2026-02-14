@@ -61,6 +61,13 @@
 
 namespace ctre::simd {
 
+inline constexpr unsigned char LOWERCASE_BIT = 0x20;
+inline constexpr size_t SHUFTI_MIN_CHARS = 5;
+inline constexpr size_t SHUFTI_MAX_CHARS = 30;
+inline constexpr size_t MIN_RANGE_SIZE_FOR_SIMD = 8;
+inline constexpr unsigned SSE_FULL_MASK = 0xFFFFU;
+inline constexpr unsigned AVX2_FULL_MASK = 0xFFFFFFFFU;
+
 [[nodiscard]] consteval bool can_use_simd() noexcept { return CTRE_SIMD_ENABLED; }
 
 // Runtime CPU feature detection

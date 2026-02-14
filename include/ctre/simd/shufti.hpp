@@ -106,7 +106,7 @@ struct shufti_pattern_trait<set<character<Cs>...>> {
     static constexpr bool is_shufti_optimizable = true;
     static constexpr size_t num_chars = sizeof...(Cs);
     static constexpr bool is_sparse = is_sparse_character_set<Cs...>();
-    static constexpr bool should_use_shufti = (num_chars >= 5 && num_chars <= 30) && is_sparse;
+    static constexpr bool should_use_shufti = (num_chars >= SHUFTI_MIN_CHARS && num_chars <= SHUFTI_MAX_CHARS) && is_sparse;
     static constexpr bool is_negated = false;
 };
 
@@ -132,7 +132,7 @@ template <auto... Cs>
 struct shufti_pattern_trait<select<character<Cs>...>> {
     static constexpr size_t num_chars = sizeof...(Cs);
     static constexpr bool is_sparse = true;
-    static constexpr bool should_use_shufti = (num_chars >= 5 && num_chars <= 30);
+    static constexpr bool should_use_shufti = (num_chars >= SHUFTI_MIN_CHARS && num_chars <= SHUFTI_MAX_CHARS);
     static constexpr bool is_shufti_optimizable = should_use_shufti;
     static constexpr bool is_negated = false;
 };
@@ -141,7 +141,7 @@ template <size_t Index, auto... Cs>
 struct shufti_pattern_trait<capture<Index, select<character<Cs>...>>> {
     static constexpr size_t num_chars = sizeof...(Cs);
     static constexpr bool is_sparse = true;
-    static constexpr bool should_use_shufti = (num_chars >= 5 && num_chars <= 30);
+    static constexpr bool should_use_shufti = (num_chars >= SHUFTI_MIN_CHARS && num_chars <= SHUFTI_MAX_CHARS);
     static constexpr bool is_shufti_optimizable = should_use_shufti;
     static constexpr bool is_negated = false;
 };

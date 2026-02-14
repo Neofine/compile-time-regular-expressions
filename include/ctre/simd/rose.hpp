@@ -66,7 +66,7 @@ template <typename Iterator, typename EndIterator>
         const bool ci = is_case_insensitive(f);
         while (prefix_start >= begin) {
             unsigned char c = static_cast<unsigned char>(*prefix_start);
-            bool is_alpha = ci ? ((c | 0x20) >= 'a' && (c | 0x20) <= 'z')
+            bool is_alpha = ci ? ((c | LOWERCASE_BIT) >= 'a' && (c | LOWERCASE_BIT) <= 'z')
                                : ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
             if (is_alpha) --prefix_start;
             else break;

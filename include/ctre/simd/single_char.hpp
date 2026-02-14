@@ -20,7 +20,7 @@ template <char C, size_t MaxCount = 0>
     while (remaining >= 32 && (MaxCount == 0 || count + 32 <= MaxCount)) {
         __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(p));
         uint32_t mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, target));
-        if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) { p += 32; count += 32; remaining -= 32; }
+        if (static_cast<unsigned>(mask) == AVX2_FULL_MASK) { p += 32; count += 32; remaining -= 32; }
         else if (mask == 0) break;
         else { int m = CTRE_CTZ(~mask); count += m; break; }
     }
@@ -42,7 +42,7 @@ template <char C, size_t MaxCount = 0>
     while (remaining >= 16 && (MaxCount == 0 || count + 16 <= MaxCount)) {
         __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(p));
         uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, target));
-        if (static_cast<unsigned>(mask) == 0xFFFFU) { p += 16; count += 16; remaining -= 16; }
+        if (static_cast<unsigned>(mask) == SSE_FULL_MASK) { p += 16; count += 16; remaining -= 16; }
         else if (mask == 0) break;
         else { int m = CTRE_CTZ(~static_cast<uint32_t>(mask)); count += m; break; }
     }

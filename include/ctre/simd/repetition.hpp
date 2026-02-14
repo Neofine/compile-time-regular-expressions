@@ -47,13 +47,13 @@ template <size_t MinCount, size_t MaxCount, typename Iterator, typename EndItera
             __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
             __m256i result;
             if (ci) {
-                __m256i t = _mm256_set1_epi8(target_char | 0x20);
-                result = _mm256_cmpeq_epi8(_mm256_or_si256(data, _mm256_set1_epi8(0x20)), t);
+                __m256i t = _mm256_set1_epi8(target_char | LOWERCASE_BIT);
+                result = _mm256_cmpeq_epi8(_mm256_or_si256(data, _mm256_set1_epi8(LOWERCASE_BIT)), t);
             } else {
                 result = _mm256_cmpeq_epi8(data, _mm256_set1_epi8(target_char));
             }
             int mask = _mm256_movemask_epi8(result);
-            if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) { current += 32; count += 32; }
+            if (static_cast<unsigned>(mask) == AVX2_FULL_MASK) { current += 32; count += 32; }
             else { int m = CTRE_CTZ(~static_cast<unsigned>(mask)); current += m; count += m; break; }
         }
 #elif defined(__SSE4_2__) || defined(__SSE2__)
@@ -62,20 +62,20 @@ template <size_t MinCount, size_t MaxCount, typename Iterator, typename EndItera
             __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
             __m128i result;
             if (ci) {
-                __m128i t = _mm_set1_epi8(target_char | 0x20);
-                result = _mm_cmpeq_epi8(_mm_or_si128(data, _mm_set1_epi8(0x20)), t);
+                __m128i t = _mm_set1_epi8(target_char | LOWERCASE_BIT);
+                result = _mm_cmpeq_epi8(_mm_or_si128(data, _mm_set1_epi8(LOWERCASE_BIT)), t);
             } else {
                 result = _mm_cmpeq_epi8(data, _mm_set1_epi8(target_char));
             }
             int mask = _mm_movemask_epi8(result);
-            if (static_cast<unsigned>(mask) == 0xFFFFU) { current += 16; count += 16; }
+            if (static_cast<unsigned>(mask) == SSE_FULL_MASK) { current += 16; count += 16; }
             else { int m = CTRE_CTZ(~static_cast<unsigned>(mask)); current += m; count += m; break; }
         }
 #endif
     }
 
     while (current != last && (MaxCount == 0 || count < MaxCount)) {
-        bool match = ci ? ((*current | 0x20) == (target_char | 0x20)) : (*current == target_char);
+        bool match = ci ? ((*current | LOWERCASE_BIT) == (target_char | LOWERCASE_BIT)) : (*current == target_char);
         if (match) { ++current; ++count; }
         else break;
     }

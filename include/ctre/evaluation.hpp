@@ -626,7 +626,7 @@ constexpr CTRE_FORCE_INLINE R evaluate(const BeginIterator begin, Iterator curre
                             }
                         }();
                         // Use SIMD for contiguous ranges, large sparse sets, or negated patterns
-                        constexpr bool use_simd = is_contiguous || (range_size >= 8) || is_negated;
+                        constexpr bool use_simd = is_contiguous || (range_size >= simd::MIN_RANGE_SIZE_FOR_SIMD) || is_negated;
                         if constexpr ((!has_gaps || is_negated) && use_simd) {
                             if (remaining >= simd::SIMD_REPETITION_THRESHOLD) {
                                 Iterator simd_result =

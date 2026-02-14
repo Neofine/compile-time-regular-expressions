@@ -104,11 +104,11 @@ template <typename PatternType, size_t... Is, typename Iterator, typename EndIte
          ...);
 
         int mask = _mm_movemask_epi8(result);
-        if (static_cast<unsigned>(mask) == 0xFFFFU) {
+        if (static_cast<unsigned>(mask) == SSE_FULL_MASK) {
             current += 16;
             count += 16;
         } else {
-            auto m = CTRE_CTZ(static_cast<unsigned>(~mask) & 0xFFFFU);
+            auto m = CTRE_CTZ(static_cast<unsigned>(~mask) & SSE_FULL_MASK);
             current += m;
             count += static_cast<size_t>(m);
             break;
@@ -137,7 +137,7 @@ template <typename PatternType, size_t... Is, typename Iterator, typename EndIte
          ...);
 
         int mask = _mm256_movemask_epi8(result);
-        if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) {
+        if (static_cast<unsigned>(mask) == AVX2_FULL_MASK) {
             current += 32;
             count += 32;
         } else {

@@ -232,7 +232,7 @@ inline Iterator match_single_char_repeat_scalar(Iterator current, const EndItera
     const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
     while (current != last && (MaxCount == 0 || count < MaxCount)) {
         char c = *current;
-        bool matches = ci ? ((c | 0x20) == (TargetChar | 0x20)) : (c == TargetChar);
+        bool matches = ci ? ((c | LOWERCASE_BIT) == (TargetChar | LOWERCASE_BIT)) : (c == TargetChar);
         if (matches) {
             ++current;
             ++count;
@@ -325,9 +325,9 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             __m128i result;
 
             if (case_insensitive) {
-                __m128i data_l = _mm_or_si128(data, _mm_set1_epi8(0x20));
-                __m128i min_l = _mm_or_si128(min_v, _mm_set1_epi8(0x20));
-                __m128i max_l = _mm_or_si128(max_v, _mm_set1_epi8(0x20));
+                __m128i data_l = _mm_or_si128(data, _mm_set1_epi8(LOWERCASE_BIT));
+                __m128i min_l = _mm_or_si128(min_v, _mm_set1_epi8(LOWERCASE_BIT));
+                __m128i max_l = _mm_or_si128(max_v, _mm_set1_epi8(LOWERCASE_BIT));
                 __m128i lt = _mm_cmpgt_epi8(min_l, data_l);
                 __m128i gt = _mm_cmpgt_epi8(data_l, max_l);
                 result = _mm_and_si128(_mm_xor_si128(lt, _mm_set1_epi8(static_cast<char>(0xFF))),
@@ -340,7 +340,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             }
 
             int mask = _mm_movemask_epi8(result);
-            if (static_cast<unsigned>(mask) == 0xFFFFU) {
+            if (static_cast<unsigned>(mask) == SSE_FULL_MASK) {
                 current += 16;
                 count += 16;
             } else {
@@ -363,10 +363,10 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             __m256i r1, r2;
 
             if (case_insensitive) {
-                __m256i d1_l = _mm256_or_si256(d1, _mm256_set1_epi8(0x20));
-                __m256i d2_l = _mm256_or_si256(d2, _mm256_set1_epi8(0x20));
-                __m256i min_l = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
-                __m256i max_l = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
+                __m256i d1_l = _mm256_or_si256(d1, _mm256_set1_epi8(LOWERCASE_BIT));
+                __m256i d2_l = _mm256_or_si256(d2, _mm256_set1_epi8(LOWERCASE_BIT));
+                __m256i min_l = _mm256_or_si256(min_vec, _mm256_set1_epi8(LOWERCASE_BIT));
+                __m256i max_l = _mm256_or_si256(max_vec, _mm256_set1_epi8(LOWERCASE_BIT));
                 __m256i lt1 = _mm256_cmpgt_epi8(min_l, d1_l), gt1 = _mm256_cmpgt_epi8(d1_l, max_l);
                 __m256i lt2 = _mm256_cmpgt_epi8(min_l, d2_l), gt2 = _mm256_cmpgt_epi8(d2_l, max_l);
                 if constexpr (is_negated) {
@@ -415,9 +415,9 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             __m256i result;
 
             if (case_insensitive) {
-                __m256i data_l = _mm256_or_si256(data, _mm256_set1_epi8(0x20));
-                __m256i min_l = _mm256_or_si256(min_vec, _mm256_set1_epi8(0x20));
-                __m256i max_l = _mm256_or_si256(max_vec, _mm256_set1_epi8(0x20));
+                __m256i data_l = _mm256_or_si256(data, _mm256_set1_epi8(LOWERCASE_BIT));
+                __m256i min_l = _mm256_or_si256(min_vec, _mm256_set1_epi8(LOWERCASE_BIT));
+                __m256i max_l = _mm256_or_si256(max_vec, _mm256_set1_epi8(LOWERCASE_BIT));
                 __m256i lt = _mm256_cmpgt_epi8(min_l, data_l), gt = _mm256_cmpgt_epi8(data_l, max_l);
                 if constexpr (is_negated)
                     result = _mm256_or_si256(lt, gt);
@@ -432,7 +432,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
             }
 
             int mask = _mm256_movemask_epi8(result);
-            if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) {
+            if (static_cast<unsigned>(mask) == AVX2_FULL_MASK) {
                 current += 32;
                 count += 32;
             } else {
@@ -444,12 +444,12 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
         }
 
         // Scalar tail
-        unsigned char min_l = case_insensitive ? (min_c | 0x20) : static_cast<unsigned char>(min_c);
-        unsigned char max_l = case_insensitive ? (max_c | 0x20) : static_cast<unsigned char>(max_c);
+        unsigned char min_l = case_insensitive ? (min_c | LOWERCASE_BIT) : static_cast<unsigned char>(min_c);
+        unsigned char max_l = case_insensitive ? (max_c | LOWERCASE_BIT) : static_cast<unsigned char>(max_c);
         for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
             unsigned char c = static_cast<unsigned char>(*current);
             if (case_insensitive)
-                c |= 0x20;
+                c |= LOWERCASE_BIT;
             bool in_range = (c >= min_l && c <= max_l);
             if constexpr (is_negated) {
                 if (in_range)
@@ -503,9 +503,9 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
             __m128i result;
 
             if (case_insensitive) {
-                __m128i data_l = _mm_or_si128(data, _mm_set1_epi8(0x20));
-                __m128i min_l = _mm_or_si128(min_vec, _mm_set1_epi8(0x20));
-                __m128i max_l = _mm_or_si128(max_vec, _mm_set1_epi8(0x20));
+                __m128i data_l = _mm_or_si128(data, _mm_set1_epi8(LOWERCASE_BIT));
+                __m128i min_l = _mm_or_si128(min_vec, _mm_set1_epi8(LOWERCASE_BIT));
+                __m128i max_l = _mm_or_si128(max_vec, _mm_set1_epi8(LOWERCASE_BIT));
                 __m128i lt = _mm_cmpgt_epi8(min_l, data_l), gt = _mm_cmpgt_epi8(data_l, max_l);
                 result = _mm_and_si128(_mm_xor_si128(lt, _mm_set1_epi8(static_cast<char>(0xFF))),
                                        _mm_xor_si128(gt, _mm_set1_epi8(static_cast<char>(0xFF))));
@@ -516,7 +516,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
             }
 
             int mask = _mm_movemask_epi8(result);
-            if (static_cast<unsigned>(mask) == 0xFFFFU) {
+            if (static_cast<unsigned>(mask) == SSE_FULL_MASK) {
                 current += 16;
                 count += 16;
             } else {
@@ -527,12 +527,12 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
             }
         }
 
-        unsigned char min_l = case_insensitive ? (min_c | 0x20) : static_cast<unsigned char>(min_c);
-        unsigned char max_l = case_insensitive ? (max_c | 0x20) : static_cast<unsigned char>(max_c);
+        unsigned char min_l = case_insensitive ? (min_c | LOWERCASE_BIT) : static_cast<unsigned char>(min_c);
+        unsigned char max_l = case_insensitive ? (max_c | LOWERCASE_BIT) : static_cast<unsigned char>(max_c);
         for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
             unsigned char c = static_cast<unsigned char>(*current);
             if (case_insensitive)
-                c |= 0x20;
+                c |= LOWERCASE_BIT;
             bool in_range = (c >= min_l && c <= max_l);
             if constexpr (is_negated) {
                 if (in_range)
@@ -554,14 +554,14 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
                                                size_t& count) {
     const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
     const __m256i target = _mm256_set1_epi8(TargetChar);
-    const __m256i target_l = ci ? _mm256_set1_epi8(TargetChar | 0x20) : target;
+    const __m256i target_l = ci ? _mm256_set1_epi8(TargetChar | LOWERCASE_BIT) : target;
     const __m256i all_ones = _mm256_set1_epi8(static_cast<char>(0xFF));
 
     // 16-byte path
     if (has_at_least_bytes(current, last, 16) && !has_at_least_bytes(current, last, 32)) {
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i t = _mm_set1_epi8(TargetChar);
-        __m128i result = ci ? _mm_cmpeq_epi8(_mm_or_si128(data, _mm_set1_epi8(0x20)), _mm_set1_epi8(TargetChar | 0x20))
+        __m128i result = ci ? _mm_cmpeq_epi8(_mm_or_si128(data, _mm_set1_epi8(LOWERCASE_BIT)), _mm_set1_epi8(TargetChar | LOWERCASE_BIT))
                             : _mm_cmpeq_epi8(data, t);
         if (_mm_test_all_ones(result)) {
             current += 16;
@@ -579,7 +579,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     // 32-byte path
     if (has_at_least_bytes(current, last, 32) && !has_at_least_bytes(current, last, 64)) {
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-        __m256i result = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(data, _mm256_set1_epi8(0x20)), target_l)
+        __m256i result = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(data, _mm256_set1_epi8(LOWERCASE_BIT)), target_l)
                             : _mm256_cmpeq_epi8(data, target);
         if (_mm256_testc_si256(result, all_ones)) {
             current += 32;
@@ -600,9 +600,9 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             break;
         __m256i d1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
         __m256i d2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*(current + 32)));
-        __m256i r1 = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(d1, _mm256_set1_epi8(0x20)), target_l)
+        __m256i r1 = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(d1, _mm256_set1_epi8(LOWERCASE_BIT)), target_l)
                         : _mm256_cmpeq_epi8(d1, target);
-        __m256i r2 = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(d2, _mm256_set1_epi8(0x20)), target_l)
+        __m256i r2 = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(d2, _mm256_set1_epi8(LOWERCASE_BIT)), target_l)
                         : _mm256_cmpeq_epi8(d2, target);
         __m256i combined = _mm256_and_si256(r1, r2);
         if (_mm256_testc_si256(combined, all_ones)) {
@@ -627,7 +627,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
         if (!has_at_least_bytes(current, last, 32))
             break;
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
-        __m256i result = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(data, _mm256_set1_epi8(0x20)), target_l)
+        __m256i result = ci ? _mm256_cmpeq_epi8(_mm256_or_si256(data, _mm256_set1_epi8(LOWERCASE_BIT)), target_l)
                             : _mm256_cmpeq_epi8(data, target);
         if (_mm256_testc_si256(result, all_ones)) {
             current += 32;
@@ -641,11 +641,11 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
     }
 
     // Scalar tail
-    unsigned char tc = ci ? (TargetChar | 0x20) : static_cast<unsigned char>(TargetChar);
+    unsigned char tc = ci ? (TargetChar | LOWERCASE_BIT) : static_cast<unsigned char>(TargetChar);
     for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         unsigned char c = static_cast<unsigned char>(*current);
         if (ci)
-            c |= 0x20;
+            c |= LOWERCASE_BIT;
         if (c != tc)
             break;
     }
@@ -658,16 +658,16 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
                                                size_t& count) {
     const bool ci = is_ascii_alpha(TargetChar) && ctre::is_case_insensitive(f);
     const __m128i target = _mm_set1_epi8(TargetChar);
-    const __m128i target_l = ci ? _mm_set1_epi8(TargetChar | 0x20) : target;
+    const __m128i target_l = ci ? _mm_set1_epi8(TargetChar | LOWERCASE_BIT) : target;
 
     while (current != last && (MaxCount == 0 || count + 16 <= MaxCount)) {
         if (!has_at_least_bytes(current, last, 16))
             break;
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i result =
-            ci ? _mm_cmpeq_epi8(_mm_or_si128(data, _mm_set1_epi8(0x20)), target_l) : _mm_cmpeq_epi8(data, target);
+            ci ? _mm_cmpeq_epi8(_mm_or_si128(data, _mm_set1_epi8(LOWERCASE_BIT)), target_l) : _mm_cmpeq_epi8(data, target);
         int mask = _mm_movemask_epi8(result);
-        if (static_cast<unsigned>(mask) == 0xFFFFU) {
+        if (static_cast<unsigned>(mask) == SSE_FULL_MASK) {
             current += 16;
             count += 16;
         } else {
@@ -678,11 +678,11 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
         }
     }
 
-    char tc = ci ? (TargetChar | 0x20) : TargetChar;
+    char tc = ci ? (TargetChar | LOWERCASE_BIT) : TargetChar;
     for (; current != last && (MaxCount == 0 || count < MaxCount); ++current, ++count) {
         char c = *current;
         if (ci)
-            c |= 0x20;
+            c |= LOWERCASE_BIT;
         if (c != tc)
             break;
     }
