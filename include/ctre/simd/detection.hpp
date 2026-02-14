@@ -25,11 +25,45 @@
 #endif
 #endif // CTRE_SIMD_ENABLED
 
+// Portable intrinsics
+#if defined(__GNUC__) || defined(__clang__)
+    #define CTRE_CTZ(x) __builtin_ctz(x)
+    #define CTRE_EXPECT_TRUE(expr) __builtin_expect(!!(expr), 1)
+    #define CTRE_EXPECT_FALSE(expr) __builtin_expect(!!(expr), 0)
+#elif defined(_MSC_VER)
+    #include <intrin.h>
+    namespace ctre::simd::detail {
+        inline int ctre_ctz(unsigned int x) noexcept {
+            unsigned long index;
+            _BitScanForward(&index, x);
+            return static_cast<int>(index);
+        }
+    }
+    #define CTRE_CTZ(x) ::ctre::simd::detail::ctre_ctz(x)
+    #define CTRE_EXPECT_TRUE(expr) (expr)
+    #define CTRE_EXPECT_FALSE(expr) (expr)
+#else
+    // Fallback for unknown compilers
+    namespace ctre::simd::detail {
+        inline int ctre_ctz_fallback(unsigned int x) noexcept {
+            int count = 0;
+            while ((x & 1) == 0 && count < 32) {
+                x >>= 1;
+                ++count;
+            }
+            return count;
+        }
+    }
+    #define CTRE_CTZ(x) ::ctre::simd::detail::ctre_ctz_fallback(x)
+    #define CTRE_EXPECT_TRUE(expr) (expr)
+    #define CTRE_EXPECT_FALSE(expr) (expr)
+#endif
+
 namespace ctre::simd {
 
 [[nodiscard]] consteval bool can_use_simd() noexcept { return CTRE_SIMD_ENABLED; }
 
-// Runtime CPU feature detectionv
+// Runtime CPU feature detection
 #ifdef CTRE_ARCH_X86
 [[nodiscard]] inline bool has_avx2() noexcept {
     static const bool result = []() noexcept {

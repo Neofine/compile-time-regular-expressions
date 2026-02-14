@@ -36,7 +36,7 @@ inline const unsigned char* find_null_terminator_avx2(const unsigned char* p) {
         int mask =
             _mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_load_si256(reinterpret_cast<const __m256i*>(s)), zero));
         if (mask != 0)
-            return s + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
+            return s + static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask)));
     }
 }
 #endif
@@ -239,7 +239,7 @@ inline bool find_alnum_avx2(const unsigned char* p, const unsigned char* end, co
                             _mm256_or_si256(in_range(x, 'a', 'z'), _mm256_cmpeq_epi8(v, _mm256_set1_epi8('_'))));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
+            out = p + static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -268,7 +268,7 @@ inline bool find_digits_avx2(const unsigned char* p, const unsigned char* end, c
                                       _mm256_xor_si256(_mm256_cmpgt_epi8(x, H), _mm256_set1_epi8(char(0xFF))));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
+            out = p + static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -299,7 +299,7 @@ inline bool find_letters_avx2(const unsigned char* p, const unsigned char* end, 
         __m256i ok = _mm256_or_si256(in_range(x, 'A', 'Z'), in_range(x, 'a', 'z'));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
+            out = p + static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -330,7 +330,7 @@ inline bool find_whitespace_avx2(const unsigned char* p, const unsigned char* en
                                             _mm256_cmpeq_epi8(v, _mm256_set1_epi8(' ')))));
         int mask = _mm256_movemask_epi8(ok);
         if (mask != 0) {
-            out = p + static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask))) + 1;
+            out = p + static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask))) + 1;
             return true;
         }
         p += 32;
@@ -367,7 +367,7 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
             _mm256_and_si256(_mm256_shuffle_epi8(upper_lut, un), _mm256_shuffle_epi8(lower_lut, ln)));
         if (mask != 0) {
             while (mask != 0) {
-                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
+                size_t i = static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -388,7 +388,7 @@ inline bool shufti_find_avx2_single(const unsigned char* p, const unsigned char*
             _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(cc.lower_nibble_table.data())), ln)));
         if (mask != 0) {
             while (mask != 0) {
-                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
+                size_t i = static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -433,7 +433,7 @@ inline bool shufti_find_avx2_double(const unsigned char* p, const unsigned char*
         int mask = _mm256_movemask_epi8(_mm256_and_si256(c1, c2));
         if (mask != 0) {
             while (mask != 0) {
-                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
+                size_t i = static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -481,7 +481,7 @@ inline bool shufti_find_ssse3(const unsigned char* p, const unsigned char* end, 
         int mask = _mm_movemask_epi8(_mm_and_si128(c1, c2));
         if (mask != 0) {
             while (mask != 0) {
-                size_t i = static_cast<size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
+                size_t i = static_cast<size_t>(CTRE_CTZ(static_cast<unsigned>(mask)));
                 if (cc.exact_membership[p[i]]) {
                     out = p + i + 1;
                     return true;
@@ -679,7 +679,7 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
                         rem -= 16;
                         continue;
                     }
-                    int fp = __builtin_ctz(mask);
+                    int fp = CTRE_CTZ(mask);
                     count += fp;
                     p += fp;
                     rem -= fp;
@@ -728,7 +728,7 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
                         rem -= 32;
                         continue;
                     }
-                    int fp = __builtin_ctz(mask);
+                    int fp = CTRE_CTZ(mask);
                     count += fp;
                     p += fp;
                     rem -= fp;

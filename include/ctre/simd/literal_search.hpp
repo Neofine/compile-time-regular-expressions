@@ -45,7 +45,7 @@ template <size_t LiteralLen>
         __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr));
         int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, first_char));
         while (mask != 0) {
-            int pos = __builtin_ctz(mask);
+            int pos = CTRE_CTZ(mask);
             if (std::memcmp(ptr + pos, literal, len) == 0) return true;
             mask &= mask - 1;
         }

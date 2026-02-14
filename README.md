@@ -4,16 +4,16 @@ SIMD extensions to [CTRE](https://github.com/hanickadot/compile-time-regular-exp
 
 ## File Overview
 
-### SIMD Matching (`include/ctre/`)
+### SIMD Matching (`include/ctre/simd/`)
 ```
-simd_detection.hpp          - CPU feature detection, size thresholds
-simd_character_classes.hpp  - [a-z]+, [0-9]+ via range comparison
-simd_multirange.hpp         - [a-zA-Z0-9]+ via parallel range checks
-simd_shufti.hpp             - Sparse sets [aeiou]+ via shuffle LUT
-simd_repetition.hpp         - Single character a+, b*
-simd_heuristics.hpp         - Compile-time eligibility checks
-simd_literal_search.hpp     - SIMD substring search
-simd_string_matching.hpp    - Fixed literal matching
+detection.hpp          - CPU feature detection, size thresholds
+character_classes.hpp  - [a-z]+, [0-9]+ via range comparison
+multirange.hpp         - [a-zA-Z0-9]+ via parallel range checks
+shufti.hpp             - Sparse sets [aeiou]+ via shuffle LUT
+repetition.hpp         - Single character a+, b*
+heuristics.hpp         - Compile-time eligibility checks
+literal_search.hpp     - SIMD substring search
+string_matching.hpp    - Fixed literal matching
 ```
 
 ### Pattern Analysis (`include/ctre/`)
@@ -27,10 +27,10 @@ pattern_traits.hpp          - Type traits for pattern introspection
 
 ### BitNFA Engine (`include/ctre/bitnfa/`)
 ```
-bitnfa_match.hpp            - Entry points: match(), search()
-compiler.hpp                - AST → NFA transitions
-state_mask.hpp              - 128-bit state vector operations
-simd_acceleration.hpp       - SIMD helpers for state updates
+bitnfa_match.hpp       - Entry points: match(), search()
+compiler.hpp           - AST → NFA transitions
+state_mask.hpp         - 128-bit state vector operations
+simd_acceleration.hpp  - SIMD helpers for state updates
 ```
 
 ### Modified Original Files
@@ -42,7 +42,7 @@ wrapper.hpp       - BitNFA dispatch for alternations (lines 87-100, 160-175)
 ## Where to Start Reading
 
 1. **Dispatch logic**: `evaluation.hpp:570` - SIMD eligibility checks and dispatch
-2. **Core SIMD**: `simd_character_classes.hpp` - vectorized range matching loop
+2. **Core SIMD**: `simd/character_classes.hpp` - vectorized range matching loop
 3. **Pattern analysis**: `glushkov_nfa.hpp` - regex AST to position NFA
 4. **Literal extraction**: `dominator_analysis.hpp` - required literal identification
 

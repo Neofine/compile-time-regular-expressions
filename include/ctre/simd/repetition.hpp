@@ -2,6 +2,7 @@
 #define CTRE__SIMD_REPETITION__HPP
 
 #include "detection.hpp"
+#include "character_classes.hpp"
 #include "../atoms_characters.hpp"
 #include "../flags_and_modes.hpp"
 #ifdef CTRE_ARCH_X86
@@ -42,7 +43,7 @@ template <size_t MinCount, size_t MaxCount, typename Iterator, typename EndItera
     if constexpr (CTRE_SIMD_ENABLED) {
 #ifdef __AVX2__
         // Check that we have at least 32 bytes available before SIMD load
-        while (last - current >= 32 && (MaxCount == 0 || count + 32 <= MaxCount)) {
+        while (has_at_least_bytes(current, last, 32) && (MaxCount == 0 || count + 32 <= MaxCount)) {
             __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
             __m256i result;
             if (ci) {
@@ -53,11 +54,11 @@ template <size_t MinCount, size_t MaxCount, typename Iterator, typename EndItera
             }
             int mask = _mm256_movemask_epi8(result);
             if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) { current += 32; count += 32; }
-            else { int m = __builtin_ctz(~mask); current += m; count += m; break; }
+            else { int m = CTRE_CTZ(~static_cast<unsigned>(mask)); current += m; count += m; break; }
         }
 #elif defined(__SSE4_2__) || defined(__SSE2__)
         // Check that we have at least 16 bytes available before SIMD load
-        while (last - current >= 16 && (MaxCount == 0 || count + 16 <= MaxCount)) {
+        while (has_at_least_bytes(current, last, 16) && (MaxCount == 0 || count + 16 <= MaxCount)) {
             __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
             __m128i result;
             if (ci) {
@@ -68,7 +69,7 @@ template <size_t MinCount, size_t MaxCount, typename Iterator, typename EndItera
             }
             int mask = _mm_movemask_epi8(result);
             if (static_cast<unsigned>(mask) == 0xFFFFU) { current += 16; count += 16; }
-            else { int m = __builtin_ctz(~mask); current += m; count += m; break; }
+            else { int m = CTRE_CTZ(~static_cast<unsigned>(mask)); current += m; count += m; break; }
         }
 #endif
     }

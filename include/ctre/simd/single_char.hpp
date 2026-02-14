@@ -22,7 +22,7 @@ template <char C, size_t MaxCount = 0>
         uint32_t mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, target));
         if (static_cast<unsigned>(mask) == 0xFFFFFFFFU) { p += 32; count += 32; remaining -= 32; }
         else if (mask == 0) break;
-        else { int m = __builtin_ctz(~mask); count += m; break; }
+        else { int m = CTRE_CTZ(~mask); count += m; break; }
     }
 
     while (remaining > 0 && (MaxCount == 0 || count < MaxCount)) {
@@ -44,7 +44,7 @@ template <char C, size_t MaxCount = 0>
         uint16_t mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, target));
         if (static_cast<unsigned>(mask) == 0xFFFFU) { p += 16; count += 16; remaining -= 16; }
         else if (mask == 0) break;
-        else { int m = __builtin_ctz(~static_cast<uint32_t>(mask)); count += m; break; }
+        else { int m = CTRE_CTZ(~static_cast<uint32_t>(mask)); count += m; break; }
     }
 
     while (remaining > 0 && (MaxCount == 0 || count < MaxCount)) {

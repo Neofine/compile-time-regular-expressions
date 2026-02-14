@@ -3,6 +3,7 @@
 
 #include "../atoms_characters.hpp"
 #include "detection.hpp"
+#include "character_classes.hpp"
 #ifdef CTRE_ARCH_X86
 #include <immintrin.h>
 #endif
@@ -93,7 +94,7 @@ struct is_three_range<set<R...>>
 template <typename PatternType, size_t... Is, typename Iterator, typename EndIterator>
 [[nodiscard]] inline Iterator match_n_range_sse_impl(Iterator current, EndIterator last, size_t& count,
                                                      std::index_sequence<Is...>) noexcept {
-    while (last - current >= 16) {
+    while (has_at_least_bytes(current, last, 16)) {
         __m128i data = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&*current));
         __m128i result = _mm_setzero_si128();
         ((result = _mm_or_si128(
@@ -107,7 +108,7 @@ template <typename PatternType, size_t... Is, typename Iterator, typename EndIte
             current += 16;
             count += 16;
         } else {
-            auto m = __builtin_ctz(static_cast<unsigned>(~mask) & 0xFFFFU);
+            auto m = CTRE_CTZ(static_cast<unsigned>(~mask) & 0xFFFFU);
             current += m;
             count += static_cast<size_t>(m);
             break;
@@ -126,7 +127,7 @@ template <typename PatternType, typename Iterator, typename EndIterator>
 template <typename PatternType, size_t... Is, typename Iterator, typename EndIterator>
 [[nodiscard]] inline Iterator match_n_range_avx2_impl(Iterator current, EndIterator last, size_t& count,
                                                       std::index_sequence<Is...>) noexcept {
-    while (last - current >= 32) {
+    while (has_at_least_bytes(current, last, 32)) {
         __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&*current));
         __m256i result = _mm256_setzero_si256();
         ((result = _mm256_or_si256(
@@ -140,7 +141,7 @@ template <typename PatternType, size_t... Is, typename Iterator, typename EndIte
             current += 32;
             count += 32;
         } else {
-            auto m = __builtin_ctz(~static_cast<unsigned>(mask));
+            auto m = CTRE_CTZ(~static_cast<unsigned>(mask));
             current += m;
             count += static_cast<size_t>(m);
             break;

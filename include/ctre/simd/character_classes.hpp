@@ -344,7 +344,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 current += 16;
                 count += 16;
             } else {
-                auto m = __builtin_ctz(static_cast<unsigned>(~mask));
+                auto m = CTRE_CTZ(static_cast<unsigned>(~mask));
                 current += m;
                 count += static_cast<size_t>(m);
                 return current;
@@ -394,11 +394,11 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 count += 64;
             } else {
                 if (_mm256_testc_si256(r1, all_ones)) {
-                    auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r2)));
+                    auto m = CTRE_CTZ(static_cast<unsigned>(~_mm256_movemask_epi8(r2)));
                     current += 32 + m;
                     count += 32 + static_cast<size_t>(m);
         } else {
-                    auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r1)));
+                    auto m = CTRE_CTZ(static_cast<unsigned>(~_mm256_movemask_epi8(r1)));
                     current += m;
                     count += static_cast<size_t>(m);
                 }
@@ -436,7 +436,7 @@ inline Iterator match_char_class_repeat_avx2(Iterator current, const EndIterator
                 current += 32;
                 count += 32;
             } else {
-                auto m = __builtin_ctz(static_cast<unsigned>(~mask));
+                auto m = CTRE_CTZ(static_cast<unsigned>(~mask));
                 current += m;
                 count += static_cast<size_t>(m);
                 break;
@@ -520,7 +520,7 @@ inline Iterator match_char_class_repeat_sse42(Iterator current, const EndIterato
                 current += 16;
                 count += 16;
             } else {
-                auto m = __builtin_ctz(static_cast<unsigned>(~mask));
+                auto m = CTRE_CTZ(static_cast<unsigned>(~mask));
                 current += m;
                 count += static_cast<size_t>(m);
                 break;
@@ -567,7 +567,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             current += 16;
             count += 16;
         } else {
-            auto m = __builtin_ctz(static_cast<unsigned>(~_mm_movemask_epi8(result)));
+            auto m = CTRE_CTZ(static_cast<unsigned>(~_mm_movemask_epi8(result)));
             current += m;
             count += static_cast<size_t>(m);
             return current;
@@ -585,7 +585,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             current += 32;
             count += 32;
         } else {
-            auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(result)));
+            auto m = CTRE_CTZ(static_cast<unsigned>(~_mm256_movemask_epi8(result)));
             current += m;
             count += static_cast<size_t>(m);
             return current;
@@ -610,11 +610,11 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             count += 64;
         } else {
             if (_mm256_testc_si256(r1, all_ones)) {
-                auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r2)));
+                auto m = CTRE_CTZ(static_cast<unsigned>(~_mm256_movemask_epi8(r2)));
                 current += 32 + m;
                 count += 32 + static_cast<size_t>(m);
             } else {
-                auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(r1)));
+                auto m = CTRE_CTZ(static_cast<unsigned>(~_mm256_movemask_epi8(r1)));
                 current += m;
                 count += static_cast<size_t>(m);
             }
@@ -633,7 +633,7 @@ inline Iterator match_single_char_repeat_avx2(Iterator current, const EndIterato
             current += 32;
             count += 32;
         } else {
-            auto m = __builtin_ctz(static_cast<unsigned>(~_mm256_movemask_epi8(result)));
+            auto m = CTRE_CTZ(static_cast<unsigned>(~_mm256_movemask_epi8(result)));
             current += m;
             count += static_cast<size_t>(m);
             break;
@@ -671,7 +671,7 @@ inline Iterator match_single_char_repeat_sse42(Iterator current, const EndIterat
             current += 16;
             count += 16;
         } else {
-            auto m = __builtin_ctz(static_cast<unsigned>(~mask));
+            auto m = CTRE_CTZ(static_cast<unsigned>(~mask));
             current += m;
             count += static_cast<size_t>(m);
             break;

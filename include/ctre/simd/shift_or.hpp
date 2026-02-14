@@ -106,32 +106,32 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
         STEP(1);
         STEP(2);
         STEP(3);
-        if (__builtin_expect(hits != 0, 0)) {
-            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
+        if (CTRE_EXPECT_FALSE(hits != 0)) {
+            cur = uchar_to_iter<It>(p + CTRE_CTZ(hits) + 1);
             return true;
         }
         STEP(4);
         STEP(5);
         STEP(6);
         STEP(7);
-        if (__builtin_expect(hits != 0, 0)) {
-            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
+        if (CTRE_EXPECT_FALSE(hits != 0)) {
+            cur = uchar_to_iter<It>(p + CTRE_CTZ(hits) + 1);
             return true;
         }
         STEP(8);
         STEP(9);
         STEP(10);
         STEP(11);
-        if (__builtin_expect(hits != 0, 0)) {
-            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
+        if (CTRE_EXPECT_FALSE(hits != 0)) {
+            cur = uchar_to_iter<It>(p + CTRE_CTZ(hits) + 1);
             return true;
         }
         STEP(12);
         STEP(13);
         STEP(14);
         STEP(15);
-        if (__builtin_expect(hits != 0, 0)) {
-            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
+        if (CTRE_EXPECT_FALSE(hits != 0)) {
+            cur = uchar_to_iter<It>(p + CTRE_CTZ(hits) + 1);
             return true;
         }
 
@@ -141,7 +141,7 @@ inline bool match_shift_or_unrolled16(It& cur, const EndIt last, const shift_or_
 
     while (p < end) {
         D = (D << 1) | (uint64_t)cm[*p++];
-        if (__builtin_expect(!(D & MSB), 0)) {
+        if (CTRE_EXPECT_FALSE(!(D & MSB))) {
             cur = uchar_to_iter<It>(p);
             return true;
         }
@@ -177,16 +177,16 @@ inline bool match_shift_or_unrolled8(It& cur, const EndIt last, const shift_or_s
         STEP(1);
         STEP(2);
         STEP(3);
-        if (__builtin_expect(hits != 0, 0)) {
-            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
+        if (CTRE_EXPECT_FALSE(hits != 0)) {
+            cur = uchar_to_iter<It>(p + CTRE_CTZ(hits) + 1);
             return true;
         }
         STEP(4);
         STEP(5);
         STEP(6);
         STEP(7);
-        if (__builtin_expect(hits != 0, 0)) {
-            cur = uchar_to_iter<It>(p + __builtin_ctz(hits) + 1);
+        if (CTRE_EXPECT_FALSE(hits != 0)) {
+            cur = uchar_to_iter<It>(p + CTRE_CTZ(hits) + 1);
             return true;
         }
 
@@ -196,7 +196,7 @@ inline bool match_shift_or_unrolled8(It& cur, const EndIt last, const shift_or_s
 
     while (p < end) {
         D = (D << 1) | (uint64_t)cm[*p++];
-        if (__builtin_expect(!(D & MSB), 0)) {
+        if (CTRE_EXPECT_FALSE(!(D & MSB))) {
             cur = uchar_to_iter<It>(p);
             return true;
         }
@@ -221,22 +221,22 @@ inline bool match_shift_or_scalar(It& cur, const EndIt last, const shift_or_stat
 
     while (size_t(end - p) >= 4) {
         D = (D << 1) | (uint64_t)cm[p[0]];
-        if (__builtin_expect(!(D & MSB), 0)) {
+        if (CTRE_EXPECT_FALSE(!(D & MSB))) {
             cur = uchar_to_iter<It>(p + 1);
             return true;
         }
         D = (D << 1) | (uint64_t)cm[p[1]];
-        if (__builtin_expect(!(D & MSB), 0)) {
+        if (CTRE_EXPECT_FALSE(!(D & MSB))) {
             std::advance(cur, (p + 2) - base);
             return true;
         }
         D = (D << 1) | (uint64_t)cm[p[2]];
-        if (__builtin_expect(!(D & MSB), 0)) {
+        if (CTRE_EXPECT_FALSE(!(D & MSB))) {
             std::advance(cur, (p + 3) - base);
             return true;
         }
         D = (D << 1) | (uint64_t)cm[p[3]];
-        if (__builtin_expect(!(D & MSB), 0)) {
+        if (CTRE_EXPECT_FALSE(!(D & MSB))) {
             std::advance(cur, (p + 4) - base);
             return true;
         }
@@ -245,7 +245,7 @@ inline bool match_shift_or_scalar(It& cur, const EndIt last, const shift_or_stat
 
     while (p < end) {
         D = (D << 1) | (uint64_t)cm[*p++];
-        if (__builtin_expect(!(D & MSB), 0)) {
+        if (CTRE_EXPECT_FALSE(!(D & MSB))) {
             cur = uchar_to_iter<It>(p);
             return true;
         }
@@ -296,7 +296,7 @@ inline bool match_string_prefilter_2bytes_sse2(It& cur, EndIt last, const char* 
         cand &= ~0u >> (N - 1);
 
         while (cand) {
-            int i = __builtin_ctz(cand);
+            int i = CTRE_CTZ(cand);
             if (verify_equal<N>(p + i, pat)) {
                 cur = uchar_to_iter<It>(p + i + N);
                 return true;
@@ -377,7 +377,7 @@ inline bool match_string_prefilter_2bytes(It& cur, EndIt last, const char* pat) 
         uint32_t cand = m0 & m1_aligned;
 
         while (cand) {
-            int i = __builtin_ctz(cand);
+            int i = CTRE_CTZ(cand);
             const unsigned char* s = p + i;
             if (verify_equal<N>(s, pat)) {
                 cur = uchar_to_iter<It>(s + N);
@@ -403,7 +403,7 @@ tail:
         uint32_t m1_aligned = (m1_cur << sh); // no next block available
         uint32_t cand = m0 & m1_aligned;
         while (cand) {
-            int i = __builtin_ctz(cand);
+            int i = CTRE_CTZ(cand);
             const unsigned char* s = p + i;
             if (verify_equal<N>(s, pat)) {
                 cur = uchar_to_iter<It>(s + N);
@@ -445,7 +445,7 @@ inline bool match_string_prefilter_2bytes(It& cur, EndIt last, const char* pat) 
         int mask = _mm256_movemask_epi8(eq0);
 
         if (mask) {
-            int i = __builtin_ctz(mask);
+            int i = CTRE_CTZ(mask);
             cur = uchar_to_iter<It>(p + i + 1);
             return true;
         }
@@ -504,7 +504,7 @@ inline bool match_class_run_shufti(It& cur, EndIt last, const auto& cc) {
             R &= (M >> i);
         }
         if (R) {
-            int i = __builtin_ctz(R);
+            int i = CTRE_CTZ(R);
             cur = uchar_to_iter<It>(p + i + K);
             return true;
         }

@@ -32,7 +32,7 @@ template <char C1, char C2, char C3, typename Iterator, typename EndIterator>
                                                         _mm_cmpeq_epi8(data2, c2_vec)),
                                           _mm_cmpeq_epi8(data3, c3_vec));
             int mask = _mm_movemask_epi8(match);
-            if (mask) return pos + __builtin_ctz(mask);
+            if (mask) return pos + CTRE_CTZ(mask);
             pos += 16;
         }
         while (pos <= search_end) {
