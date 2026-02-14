@@ -398,7 +398,7 @@ constexpr auto find_regions(const acyclic_graph<NFA>& dag) {
 
 // String Extraction
 
-// Check if a state is "simple" (literal or small character set)
+// Check if a state is "simple" (literal character only)
 template <typename NFA>
 constexpr bool is_simple_state(const NFA& nfa, size_t state_id) {
     if (state_id >= nfa.state_count) return false;
@@ -413,11 +413,16 @@ constexpr bool is_simple_state(const NFA& nfa, size_t state_id) {
         if (nfa.accept_states[i] == state_id) return false;
     }
 
-    // State must have a symbol (literal character)
+    // State must have a symbol
     if (state.symbol == '\0') return false;
 
-    // TODO: Add character-set support (for now, only literals)
-    // For now, we only accept simple literal characters
+    // Character sets and wildcards (represented as '?' or '.') cannot be extracted as literals
+    // Only accept simple literal characters (printable ASCII excluding special markers)
+    if (state.symbol == '?' || state.symbol == '.') return false;
+
+    // Only extract printable characters (space through ~)
+    // This excludes control characters that might be used as special markers
+    if (state.symbol < ' ' || state.symbol > '~') return false;
 
     return true;
 }
@@ -472,7 +477,22 @@ constexpr auto extract_string_backward(const NFA& nfa, size_t accept_state) {
 
         // Get the symbol for this state
         char sym = nfa.states[current].symbol;
-        if (sym != '\0' && current != nfa.start_state) {
+        
+        if (current != nfa.start_state && sym != '\0') {
+            // Check if this is a literal character (not a character set or wildcard)
+            // Character sets are marked with '?', wildcards with '.'
+            if (sym == '?' || sym == '.') {
+                // Non-literal state breaks the extraction
+                result.has_literal = false;
+                return result;
+            }
+            
+            // Only extract printable characters
+            if (sym < ' ' || sym > '~') {
+                result.has_literal = false;
+                return result;
+            }
+            
             chars_reversed[char_count++] = sym;
         }
 

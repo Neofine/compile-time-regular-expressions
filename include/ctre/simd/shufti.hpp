@@ -691,15 +691,17 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
                 } else {
                     if (mask == 0)
                         break;
-                    for (int i = 0; i < 16 && rem > 0; ++i) {
+                    // Only check bytes that are actually available
+                    int check_count = (rem < 16) ? static_cast<int>(rem) : 16;
+                    for (int i = 0; i < check_count; ++i) {
                         if (!cc.exact_membership[p[i]]) {
                             p += i;
                             goto done_sse;
                         }
                         ++count;
                     }
-                    p += 16;
-                    rem -= 16;
+                    p += check_count;
+                    rem -= check_count;
                 }
             }
         done_sse:;
@@ -738,15 +740,17 @@ inline Iterator match_pattern_repeat_shufti(Iterator current, EndIterator last, 
                 } else {
                     if (mask == 0)
                         break;
-                    for (int i = 0; i < 32 && rem > 0; ++i) {
+                    // Only check bytes that are actually available
+                    int check_count = (rem < 32) ? static_cast<int>(rem) : 32;
+                    for (int i = 0; i < check_count; ++i) {
                         if (!cc.exact_membership[p[i]]) {
                             p += i;
                             goto done_avx2;
                         }
                         ++count;
                     }
-                    p += 32;
-                    rem -= 32;
+                    p += check_count;
+                    rem -= check_count;
                 }
             }
         done_avx2:;

@@ -64,19 +64,24 @@ constexpr auto first(ctll::list<Content...> l, ctll::list<assert_subject_end, Ta
 
 template <typename... Content, typename... Tail> 
 constexpr auto first(ctll::list<Content...> l, ctll::list<assert_subject_end_line, Tail...>) noexcept {
-	// FIXME allow endline here
+	// $ doesn't consume characters, so doesn't contribute to first-set
+	// Note: In multiline mode, $ can match before \n, but this doesn't affect
+	// first-set computation (which characters can START a match)
 	return l;
 }
 
 template <typename... Content, typename... Tail> 
 constexpr auto first(ctll::list<Content...> l, ctll::list<assert_line_begin, Tail...>) noexcept {
-	// FIXME line begin is a bit different than subject begin
+	// ^ doesn't consume characters, continue with tail
+	// Note: In multiline mode, ^ can match after \n, but this doesn't change
+	// the first-set computation - we still process what comes after ^
 	return first(l, ctll::list<Tail...>{});
 }
 
 template <typename... Content, typename... Tail> 
 constexpr auto first(ctll::list<Content...> l, ctll::list<assert_line_end, Tail...>) noexcept {
-	// FIXME line end is a bit different than subject begin
+	// $ doesn't consume characters, so doesn't contribute to first-set
+	// Assertion checks position but doesn't change what can start the match
 	return l;
 }
 
@@ -167,7 +172,9 @@ constexpr auto first(ctll::list<Content...>, ctll::list<lookahead_positive<Seq..
 	return ctll::list<can_be_anything>{};
 }
 
-// lookbehind_negative TODO fixme
+// lookbehind_negative
+// Conservative: return can_be_anything since we don't track what came before
+// More sophisticated analysis would track context, but that's complex for first-set
 template <typename... Content, typename... Seq, typename... Tail> 
 constexpr auto first(ctll::list<Content...>, ctll::list<lookbehind_negative<Seq...>, Tail...>) noexcept {
 	return ctll::list<can_be_anything>{};
@@ -179,7 +186,9 @@ constexpr auto first(ctll::list<Content...>, ctll::list<lookbehind_positive<Seq.
 	return ctll::list<can_be_anything>{};
 }
 
-// lookahead_negative TODO fixme
+// lookahead_negative  
+// Conservative: return can_be_anything since the negative lookahead doesn't constrain
+// what CAN match, only what CAN'T. A more precise analysis is possible but complex.
 template <typename... Content, typename... Seq, typename... Tail> 
 constexpr auto first(ctll::list<Content...>, ctll::list<lookahead_negative<Seq...>, Tail...>) noexcept {
 	return ctll::list<can_be_anything>{};
